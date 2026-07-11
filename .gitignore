@@ -1,0 +1,17 @@
+# Локальные колоды и выгрузки, которые собираются из скилла
+*-stories/
+stories.html
+moodboard.html
+moodboard-data.js
+source.md
+images/*
+!images/.gitkeep
+
+# Экспортированные карточки
+story-*.png
+story-*.jpg
+
+# Системное
+.DS_Store
+__pycache__/
+*.pyc

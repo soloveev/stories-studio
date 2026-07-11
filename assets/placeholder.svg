@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#d4d4d4"/>
+  <g fill="#888" font-family="-apple-system, Inter, sans-serif" text-anchor="middle">
+    <text x="540" y="520" font-size="56" font-weight="700" letter-spacing="6">IMAGE</text>
+    <text x="540" y="600" font-size="26" font-weight="400" letter-spacing="3" fill="#999">CLICK — DROP A FILE OR PASTE A URL</text>
+  </g>
+  <rect x="40" y="40" width="1000" height="1000" fill="none" stroke="#aaa" stroke-width="2" stroke-dasharray="14 10"/>
+</svg>

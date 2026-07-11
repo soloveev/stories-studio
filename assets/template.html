@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stories</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Unbounded:wght@400;700;900&family=Russo+One&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Golos+Text:wght@400;700;900&family=Manrope:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #2a2a2a; font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; }
+  .toolbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #1a1a1a; border-bottom: 1px solid #333;
+    padding: 8px 24px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .toolbar button {
+    background: #333; color: #ccc; border: 1px solid #555;
+    padding: 7px 14px; font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; cursor: pointer; border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .toolbar button:hover { background: #444; color: #fff; border-color: #666; }
+  .toolbar button.fmt-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
+  .toolbar .sep { color: #333; margin: 0 4px; }
+  .viewport { display: flex; align-items: center; justify-content: center; height: 100vh; padding-top: 44px; }
+  .story-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; position: absolute; visibility: hidden; pointer-events: none; }
+  .story-wrap.active { visibility: visible; pointer-events: auto; }
+  .story-label { color: #666; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .story {
+    width: 1080px; height: 1920px; overflow: hidden;
+    display: flex; flex-direction: column;
+    transform-origin: top center; transform: scale(0.38);
+    margin-bottom: -1190px; flex-shrink: 0;
+    padding: 72px;
+    position: relative;
+  }
+  /* Формат «пост» 1080×1350 (4:5); margin-bottom = -height × (1 − scale) */
+  body.fmt-post .story { height: 1350px; margin-bottom: -837px; }
+  .story-white { background: #fff; }
+  .story-gray  { background: #ededed; }
+  .story-black { background: #111; color: #fff; }
+  .story-black .story-text, .story-black .story-quote, .story-black .story-title, .story-black .story-subtitle, .story-black .story-footer, .story-black .story-kicker { color: #fff; }
+  .story-black .story-kicker { color: #bbb; }
+
+  /* Image block on every slide — base size; can be scaled/translated freely */
+  .story-image-block {
+    width: 100%;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 48px;
+    flex-shrink: 0;
+    overflow: visible;
+    position: relative;
+  }
+  .story-image-block img {
+    max-width: 100%; max-height: 780px;
+    width: auto; height: auto;
+    display: block;
+    transform-origin: center center;
+    cursor: grab;
+    -webkit-user-drag: none; user-select: none;
+    transition: box-shadow 0.15s;
+  }
+  .story-image-block img:hover { box-shadow: 0 0 0 2px rgba(0,120,255,0.25); }
+  .story-image-block img.dragging { cursor: grabbing; box-shadow: 0 0 0 2px rgba(0,120,255,0.6); }
+  .story-image-block img.drop-target { box-shadow: 0 0 0 4px rgba(34,197,94,0.7); }
+  .story-image-block.small img { max-height: 560px; }
+  .story-image-block.medium img { max-height: 680px; }
+
+  /* Обрезка картинки: обёртка-окно. overflow:hidden ставится инлайном только при активном кропе;
+     clip-path не используется — html2canvas 1.4.1 игнорирует его при экспорте. */
+  .img-crop { position: relative; max-width: 100%; }
+  .img-crop.cropping { outline: 2px dashed rgba(0,120,255,0.8); outline-offset: 2px; }
+  .crop-handle { position: absolute; z-index: 20; background: rgba(0,120,255,0.30); transition: background 0.15s; touch-action: none; }
+  .crop-handle:hover, .crop-handle.dragging { background: rgba(0,120,255,0.65); }
+  .crop-handle[data-side="top"], .crop-handle[data-side="bottom"] { left: 0; right: 0; height: 40px; cursor: ns-resize; }
+  .crop-handle[data-side="top"] { top: 0; }
+  .crop-handle[data-side="bottom"] { bottom: 0; }
+  .crop-handle[data-side="left"], .crop-handle[data-side="right"] { top: 0; bottom: 0; width: 40px; cursor: ew-resize; }
+  .crop-handle[data-side="left"] { left: 0; }
+  .crop-handle[data-side="right"] { right: 0; }
+
+  /* Image editor panel */
+  .image-editor {
+    position: fixed; z-index: 200;
+    background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
+    padding: 16px; width: 300px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    color: #ccc; display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .image-editor.visible { display: block; }
+  .image-editor label { display: block; margin-bottom: 6px; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .image-editor .scale-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .image-editor input[type="range"] { flex: 1; accent-color: #4af; cursor: pointer; }
+  .image-editor .scale-value { min-width: 52px; text-align: right; color: #fff; }
+  .image-editor input[type="text"] {
+    width: 100%; background: #111; border: 1px solid #444; border-radius: 4px;
+    padding: 8px 10px; color: #fff; font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; outline: none; margin-bottom: 12px;
+  }
+  .image-editor input[type="text"]:focus { border-color: #666; }
+  .image-editor .editor-btn {
+    background: #333; color: #ccc; border: 1px solid #555;
+    padding: 7px 14px; font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; cursor: pointer; border-radius: 4px;
+    margin-right: 6px;
+  }
+  .image-editor .editor-btn:hover { background: #444; color: #fff; }
+  .image-editor .hint {
+    margin-top: 6px; color: #666; font-size: 11px; line-height: 1.5;
+  }
+
+  /* Moodboard popup */
+  .moodboard-overlay {
+    position: fixed; inset: 0; z-index: 250;
+    background: rgba(0,0,0,0.78);
+    display: none; align-items: flex-start; justify-content: center;
+    overflow-y: auto; padding: 56px 24px 40px;
+  }
+  .moodboard-overlay.visible { display: flex; }
+
+  .sig-overlay {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,0.72); display: none;
+    align-items: center; justify-content: center;
+  }
+  .sig-overlay.visible { display: flex; }
+  .sig-modal {
+    width: 420px; max-width: 90vw; background: #1e1e1e;
+    border: 1px solid #333; border-radius: 14px; padding: 26px;
+    font-family: 'Inter', sans-serif; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .sig-modal .sig-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .sig-modal .sig-hint { font-size: 12px; color: #999; line-height: 1.55; margin-bottom: 16px; }
+  .sig-modal .sig-input {
+    width: 100%; background: #111; border: 1px solid #444; border-radius: 8px;
+    color: #fff; font-size: 14px; padding: 11px 13px; font-family: 'JetBrains Mono', monospace;
+  }
+  .sig-modal .sig-input:focus { outline: none; border-color: #4af; }
+  .sig-modal .sig-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .sig-modal .sig-actions button {
+    background: #333; color: #ccc; border: 1px solid #555; border-radius: 8px;
+    padding: 9px 16px; font-size: 13px; cursor: pointer;
+  }
+  .sig-modal .sig-actions button:hover { background: #444; color: #fff; }
+  .sig-modal .sig-actions .sig-save { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .sig-modal .sig-actions .sig-save:hover { background: #1d4ed8; }
+  .moodboard-modal {
+    background: #161616; border: 1px solid #333; border-radius: 10px;
+    max-width: 1100px; width: 100%; padding: 20px 24px 28px;
+    font-family: 'JetBrains Mono', monospace; color: #ccc;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  }
+  .moodboard-modal .mb-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .moodboard-modal .mb-title { font-size: 13px; color: #fff; letter-spacing: 0.06em; }
+  .moodboard-modal .mb-close {
+    cursor: pointer; background: #333; border: 1px solid #555; color: #ccc;
+    border-radius: 4px; padding: 5px 12px; font-family: inherit; font-size: 12px;
+  }
+  .moodboard-modal .mb-close:hover { background: #444; color: #fff; }
+  .moodboard-modal .mb-hint { font-size: 11px; color: #777; line-height: 1.5; margin-bottom: 14px; }
+  .moodboard-modal h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+    color: #888; margin: 20px 0 10px; font-weight: 400;
+  }
+  .mb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .mb-item { cursor: pointer; position: relative; }
+  .mb-item img {
+    width: 100%; height: 110px; object-fit: cover; display: block;
+    border: 1px solid #333; border-radius: 4px;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .mb-item:hover img { border-color: #4af; transform: scale(1.02); }
+  .mb-item .mb-label {
+    font-size: 9px; color: #777; line-height: 1.3; margin-top: 3px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .mb-item .mb-copy {
+    position: absolute; top: 6px; right: 6px;
+    background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.2); color: #fff;
+    font-size: 9px; padding: 3px 7px; border-radius: 3px; cursor: pointer;
+    opacity: 0; transition: opacity 0.15s; font-family: inherit;
+  }
+  .mb-item:hover .mb-copy { opacity: 1; }
+  .mb-item.broken { display: none; }
+  .toast {
+    position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+    background: #222; color: #fff; border: 1px solid #444; border-radius: 6px;
+    padding: 10px 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    z-index: 300; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  }
+  .toast.visible { opacity: 1; }
+
+  /* Editorial typography */
+  .story-title {
+    font-family: 'Inter', sans-serif; font-weight: 900;
+    font-size: 96px; line-height: 0.98; letter-spacing: -0.02em;
+    color: #111;
+  }
+  .story-kicker {
+    font-family: 'JetBrains Mono', monospace; font-size: 26px;
+    text-transform: uppercase; letter-spacing: 0.18em;
+    color: #888; margin-bottom: 28px;
+  }
+
+  .story-text {
+    font-family: 'Inter', sans-serif; font-weight: 400;
+    font-size: 42px; line-height: 1.38; color: #1a1a1a;
+    letter-spacing: -0.005em;
+  }
+  /* b/strong наследуют цвет — иначе окраска выделения не действует на жирные куски */
+  .story-text b, .story-text strong { font-weight: 700; color: inherit; }
+  .story-text + .story-text { margin-top: 28px; }
+
+  .story-quote {
+    font-family: 'Inter', sans-serif; font-weight: 900;
+    font-size: 68px; line-height: 1.1; color: #111;
+    letter-spacing: -0.02em;
+  }
+
+  .story-text-sm {
+    font-family: 'Inter', sans-serif; font-weight: 400;
+    font-size: 34px; line-height: 1.42; color: #1a1a1a;
+  }
+  .story-text-sm b, .story-text-sm strong { font-weight: 700; color: inherit; }
+  .story-text-sm + .story-text-sm { margin-top: 22px; }
+
+  .story-bullets {
+    font-family: 'Inter', sans-serif; font-weight: 400;
+    font-size: 38px; line-height: 1.4; color: #1a1a1a;
+    letter-spacing: -0.005em;
+    list-style: none; padding: 0; margin: 0;
+  }
+  .story-bullets li {
+    position: relative; padding-left: 40px; margin-bottom: 20px;
+  }
+  .story-bullets li::before {
+    content: ''; position: absolute; left: 0; top: 24px;
+    width: 18px; height: 2px; background: currentColor;
+  }
+  .story-bullets b, .story-bullets strong { font-weight: 700; color: inherit; }
+  .story-black .story-bullets { color: #fff; }
+
+  .story-footer {
+    font-family: 'JetBrains Mono', monospace; font-size: 22px;
+    color: #888; letter-spacing: 0.08em;
+    margin-top: auto;
+    display: flex; justify-content: flex-end; align-items: baseline;
+  }
+  .story-footer .term { text-transform: uppercase; }
+  .story-black .story-footer { color: #777; }
+
+  .spacer { flex: 1; }
+
+  [contenteditable="true"] { outline: none; cursor: text; border-radius: 4px; transition: box-shadow 0.2s; }
+  [contenteditable="true"]:hover { box-shadow: inset 0 0 0 2px rgba(0,120,255,0.15); }
+  [contenteditable="true"]:focus { box-shadow: inset 0 0 0 2px rgba(0,120,255,0.4); }
+
+  .block { position: relative; transition: transform 0.15s ease; touch-action: none; }
+  .story img { -webkit-user-drag: none; user-select: none; }
+  .block .block-controls { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.2s; z-index: 10; }
+  .block:hover .block-controls { opacity: 1; }
+  .move-btn { width: 40px; height: 40px; background: rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; color: #666; transition: background 0.15s; user-select: none; }
+  .move-btn:hover { background: rgba(0,0,0,0.12); color: #000; }
+  .drag-handle { width: 40px; height: 28px; background: rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; cursor: grab; font-size: 16px; color: #999; user-select: none; letter-spacing: 2px; }
+  .drag-handle:hover { background: rgba(0,0,0,0.12); color: #000; }
+  .drag-handle:active { cursor: grabbing; }
+  .block::before, .block::after { content: ''; position: absolute; left: 0; right: 0; height: 12px; cursor: ns-resize; z-index: 5; }
+  .block::before { top: 0; } .block::after { bottom: 0; }
+  .block.dragging { opacity: 0.5; z-index: 100; position: relative; transition: none; }
+
+  .text-size-editor {
+    position: fixed; z-index: 200;
+    background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
+    padding: 12px 16px; width: 200px;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    color: #ccc; display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    max-height: calc(100vh - 70px); overflow-y: auto;
+  }
+  .text-size-editor.visible { display: block; }
+  .text-size-editor label { display: block; margin-bottom: 8px; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .size-btn-row { display: flex; gap: 6px; }
+  .size-btn { flex: 1; padding: 8px 0; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #888; transition: all 0.15s; }
+  .size-btn:hover { background: #333; color: #fff; }
+  .size-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
+  .font-row { display: flex; flex-direction: column; gap: 4px; }
+  .font-btn { padding: 6px 10px; background: #222; border: 1px solid #444; border-radius: 4px; text-align: left; cursor: pointer; font-size: 14px; color: #aaa; transition: all 0.15s; }
+  .font-btn:hover { background: #333; color: #fff; }
+  .font-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
+  .align-btn-row { display: flex; gap: 6px; margin-top: 10px; }
+  .align-btn { flex: 1; padding: 8px 0; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; cursor: pointer; font-size: 16px; color: #888; transition: all 0.15s; }
+  .align-btn:hover { background: #333; color: #fff; }
+  .align-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
+
+  /* Color swatches — reusable for text / highlight / slide bg */
+  .color-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .color-swatch {
+    width: 26px; height: 26px; border-radius: 50%;
+    cursor: pointer; border: 1px solid rgba(255,255,255,0.18);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: #888;
+    transition: transform 0.1s, border-color 0.1s;
+  }
+  .color-swatch:hover { transform: scale(1.12); border-color: rgba(255,255,255,0.5); }
+  .toolbar .bg-swatches { display: flex; align-items: center; gap: 5px; margin-left: 4px; }
+  .toolbar .bg-swatch {
+    width: 20px; height: 20px; border-radius: 50%;
+    cursor: pointer; border: 1px solid rgba(255,255,255,0.2);
+    transition: transform 0.1s;
+  }
+  .toolbar .bg-swatch:hover { transform: scale(1.2); }
+
+  .nav-arrow { position: fixed; top: 50%; transform: translateY(-50%); z-index: 90; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #888; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 22px; transition: all 0.15s; }
+  .nav-arrow:hover { background: rgba(255,255,255,0.2); color: #fff; }
+  .nav-arrow.left { left: 20px; } .nav-arrow.right { right: 20px; }
+  .slide-counter { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #888; z-index: 100; letter-spacing: 0.05em; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button onclick="addTextBlock()">+ Текст</button>
+  <span class="sep">|</span>
+  <span style="color:#666;font-family:'JetBrains Mono',monospace;font-size:11px;margin-right:2px;">ФОН</span>
+  <div class="bg-swatches">
+    <div class="bg-swatch" style="background:#ffffff" data-bg="#ffffff" title="Белый"></div>
+    <div class="bg-swatch" style="background:#ededed" data-bg="#ededed" title="Серый"></div>
+    <div class="bg-swatch" style="background:#111111" data-bg="#111111" data-dark="1" title="Чёрный"></div>
+    <div class="bg-swatch" style="background:#fff176" data-bg="#fff176" title="Жёлтый"></div>
+    <div class="bg-swatch" style="background:#ffb4a2" data-bg="#ffb4a2" title="Коралл"></div>
+    <div class="bg-swatch" style="background:#a5f3fc" data-bg="#a5f3fc" title="Голубой"></div>
+    <div class="bg-swatch" style="background:#bbf7d0" data-bg="#bbf7d0" title="Мята"></div>
+    <div class="bg-swatch" style="background:#e9d5ff" data-bg="#e9d5ff" title="Лаванда"></div>
+    <div class="bg-swatch" style="background:#5b21b6" data-bg="#5b21b6" data-dark="1" title="Фиолетовый"></div>
+  </div>
+  <span class="sep">|</span>
+  <span style="color:#666;font-family:'JetBrains Mono',monospace;font-size:11px;margin-right:2px;">ФОРМАТ</span>
+  <button class="fmt-btn active" data-fmt="story" onclick="setFormat('story')" title="Instagram Stories / Reels — 1080×1920">9:16 · 1920</button>
+  <button class="fmt-btn" data-fmt="post" onclick="setFormat('post')" title="Instagram пост — 1080×1350">4:5 · 1350</button>
+  <span class="sep">|</span>
+  <button id="moodboard-btn" onclick="openMoodboard()" style="display:none">🖼 Мудборд</button>
+  <span class="sep" id="moodboard-sep" style="display:none">|</span>
+  <button onclick="openSignature()" title="Подпись в футере каждой карточки">✏️ Подпись</button>
+  <span class="sep">|</span>
+  <button onclick="downloadOne(current,'png')">↓ Слайд PNG</button>
+  <button onclick="downloadOne(current,'jpeg')">↓ Слайд JPEG</button>
+  <span class="sep">|</span>
+  <button onclick="downloadAll('png')">↓ Все PNG</button>
+  <button onclick="downloadAll('jpeg')">↓ Все JPEG</button>
+</div>
+
+<div class="viewport">
+  <div class="nav-arrow left" onclick="go(-1)">&#8592;</div>
+  <div class="nav-arrow right" onclick="go(1)">&#8594;</div>
+
+  <!--
+    ======================================================================
+    ШАБЛОНЫ СЛАЙДОВ — ДУБЛИРУЙ НУЖНЫЙ ПАТТЕРН
+    ======================================================================
+    Паттерн 1: TITLE — первый слайд. Картинка + заголовок + первый абзац.
+    Паттерн 2: BODY — картинка + абзац(ы).
+    Паттерн 3: QUOTE — картинка + крупная цитата (выделенная мысль).
+    Паттерн 4: BULLETS — картинка + буллитный список.
+    Паттерн 5: CLOSING — картинка + мелкий текст вывода.
+
+    Классы картинки:
+      .story-image-block        — базовый, max-height 780px
+      .story-image-block.medium — 680px
+      .story-image-block.small  — 560px
+
+    Фон слайда (класс на .story):
+      story-white (дефолт), story-gray, story-black
+      Любой цвет — просто кликом по палитре в тулбаре.
+
+    Типографика:
+      .story-title     — 96px (заголовок)
+      .story-quote     — 68px (крупная цитата)
+      .story-text      — 42px (обычный абзац)
+      .story-text-sm   — 34px (мелкий текст)
+      .story-bullets   — список с буллитами
+    ======================================================================
+  -->
+
+  <!-- SLIDE 1 — TITLE: картинка + заголовок + первый абзац -->
+  <div class="story-wrap active" data-slide="0">
+    <span class="story-label">1 / 4</span>
+    <div class="story story-white" id="story-1">
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-image-block small"><img src="images/placeholder.svg" alt=""></div>
+      </div>
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-title" contenteditable="true">Заголовок<br>поста</div>
+      </div>
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-text" contenteditable="true">Первый абзац статьи. Здесь сразу — ключевой <b>тезис</b> или <i>зацеп</i>, чтобы читатель втянулся. Короткое сильное предложение лучше длинного объяснения.</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="story-footer" contenteditable="true"><span class="footer-sig"></span></div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2 — BODY: картинка + абзац(ы) -->
+  <div class="story-wrap" data-slide="1">
+    <span class="story-label">2 / 4</span>
+    <div class="story story-gray" id="story-2">
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-image-block small"><img src="images/placeholder.svg" alt=""></div>
+      </div>
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-text" contenteditable="true">Абзац контента. Ключевые слова — <b>жирным</b>, оттенки значения — <i>курсивом</i>. Если абзац крупный — разбей на два слайда.</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="story-footer" contenteditable="true"><span class="footer-sig"></span></div>
+    </div>
+  </div>
+
+  <!-- SLIDE 3 — QUOTE: крупная мысль + маленькая картинка -->
+  <div class="story-wrap" data-slide="2">
+    <span class="story-label">3 / 4</span>
+    <div class="story story-white" id="story-3">
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-image-block small"><img src="images/placeholder.svg" alt=""></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-quote" contenteditable="true">Здесь большая цитата или <b>яркий тезис</b>, который работает как визуальный акцент.</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="story-footer" contenteditable="true"><span class="footer-sig"></span></div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4 — BULLETS: картинка + буллитный список -->
+  <div class="story-wrap" data-slide="3">
+    <span class="story-label">4 / 4</span>
+    <div class="story story-gray" id="story-4">
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <div class="story-image-block small"><img src="images/placeholder.svg" alt=""></div>
+      </div>
+      <div class="block">
+        <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+        <ul class="story-bullets" contenteditable="true">
+          <li>Первый пункт — <b>короткая мысль</b></li>
+          <li>Второй пункт — <i>нюанс</i></li>
+          <li>Третий — вывод</li>
+        </ul>
+      </div>
+      <div class="spacer"></div>
+      <div class="story-footer" contenteditable="true"><span class="footer-sig"></span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Image Editor Panel -->
+<div class="image-editor" id="image-editor">
+  <label>Масштаб</label>
+  <div class="scale-row">
+    <input type="range" id="img-scale" min="20" max="400" value="100" />
+    <span class="scale-value" id="img-scale-value">100%</span>
+  </div>
+  <label>URL картинки</label>
+  <input type="text" id="img-url-input" placeholder="images/… или https://…" />
+  <input type="file" id="img-file-input" accept="image/*" style="display:none" />
+  <div>
+    <button class="editor-btn" id="mb-open-btn" onclick="openMoodboard(activeImgTarget)" style="display:none">🖼 Из мудборда</button>
+    <button class="editor-btn" onclick="document.getElementById('img-file-input').click()">📁 Загрузить файл</button>
+    <button class="editor-btn" id="crop-btn" onclick="toggleCropMode()">✂ Обрезка</button>
+    <button class="editor-btn" onclick="resetImageTransform()">↺ Сброс</button>
+    <button class="editor-btn" onclick="closeImageEditor()">Закрыть</button>
+  </div>
+  <div class="hint">Тяни картинку мышью — перемещение. Слайдер — масштаб. «✂ Обрезка» — тяни синие полоски по краям; обрезается только та сторона. Можно перетащить файл прямо на картинку — заменится.</div>
+</div>
+
+<!-- Text Size Editor Panel -->
+<div class="text-size-editor" id="text-size-editor">
+  <label>Размер текста</label>
+  <div class="size-btn-row">
+    <div class="size-btn" data-size="0">S</div>
+    <div class="size-btn" data-size="1">M</div>
+    <div class="size-btn" data-size="2">L</div>
+  </div>
+  <div class="size-btn-row" id="font-adjust-row" style="margin-top: 6px;">
+    <div class="size-btn" onclick="adjustFontSize(-2)">−</div>
+    <div class="size-btn" id="font-px" style="cursor: default;">–</div>
+    <div class="size-btn" onclick="adjustFontSize(2)">+</div>
+  </div>
+  <label style="margin-top: 10px;">Шрифт</label>
+  <div class="font-row" id="font-row"></div>
+  <label style="margin-top: 10px;">Выравнивание</label>
+  <div class="align-btn-row">
+    <div class="align-btn" data-align="left">⫷</div>
+    <div class="align-btn" data-align="center">☰</div>
+    <div class="align-btn" data-align="right">⫸</div>
+  </div>
+  <label style="margin-top: 12px;">Цвет текста</label>
+  <div class="color-row" data-mode="text">
+    <div class="color-swatch" style="background:#111111" data-color="#111111" title="Чёрный"></div>
+    <div class="color-swatch" style="background:#ffffff; border-color: #444;" data-color="#ffffff" title="Белый"></div>
+    <div class="color-swatch" style="background:#6b7280" data-color="#6b7280" title="Серый"></div>
+    <div class="color-swatch" style="background:#d62828" data-color="#d62828" title="Красный"></div>
+    <div class="color-swatch" style="background:#1d4ed8" data-color="#1d4ed8" title="Синий"></div>
+    <div class="color-swatch" style="background:#16a34a" data-color="#16a34a" title="Зелёный"></div>
+    <div class="color-swatch" style="background:#7c3aed" data-color="#7c3aed" title="Фиолетовый"></div>
+  </div>
+  <label style="margin-top: 10px;">Подсветка (маркер)</label>
+  <div class="color-row" data-mode="highlight">
+    <div class="color-swatch" style="background:transparent; color:#888;" data-color="transparent" title="Без подсветки">✕</div>
+    <div class="color-swatch" style="background:#ffffff; border-color:#444;" data-color="#ffffff" title="Белый"></div>
+    <div class="color-swatch" style="background:#fff176" data-color="#fff176" title="Жёлтый"></div>
+    <div class="color-swatch" style="background:#ffb4a2" data-color="#ffb4a2" title="Коралл"></div>
+    <div class="color-swatch" style="background:#a5f3fc" data-color="#a5f3fc" title="Голубой"></div>
+    <div class="color-swatch" style="background:#bbf7d0" data-color="#bbf7d0" title="Мята"></div>
+    <div class="color-swatch" style="background:#e9d5ff" data-color="#e9d5ff" title="Лаванда"></div>
+    <div class="color-swatch" style="background:#111111; color:#fff;" data-color="#111111" title="Чёрный"></div>
+  </div>
+</div>
+
+<!-- Moodboard popup -->
+<div class="moodboard-overlay" id="moodboard-overlay">
+  <div class="moodboard-modal">
+    <div class="mb-head"><span class="mb-title">🖼 МУДБОРД</span><button class="mb-close" onclick="closeMoodboard()">Закрыть ✕</button></div>
+    <div class="mb-hint" id="mb-hint"></div>
+    <div id="moodboard-content"></div>
+  </div>
+</div>
+
+<div class="sig-overlay" id="sig-overlay">
+  <div class="sig-modal">
+    <div class="sig-title">Подпись в углу карточек</div>
+    <div class="sig-hint">Адрес блога или имя — появится в правом нижнем углу каждой карточки. Можно оставить пустым, тогда угол будет чистым. Поменять можно в любой момент кнопкой «✏️ Подпись».</div>
+    <input type="text" id="sig-input" class="sig-input" placeholder="например, yourblog.com" autocomplete="off">
+    <div class="sig-actions">
+      <button class="sig-empty" onclick="saveSignature('')">Без подписи</button>
+      <button class="sig-save" onclick="saveSignature(document.getElementById('sig-input').value)">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="slide-counter" id="slide-counter"></div>
+
+<script src="moodboard-data.js"></script>
+<script>
+const SCALE = 0.38;
+const NUDGE_STEP = 20;
+
+const storyIds = Array.from(document.querySelectorAll('.story')).map(s => s.id);
+const slides = document.querySelectorAll('.story-wrap');
+const totalSlides = slides.length;
+let current = 0;
+
+const counterEl = document.getElementById('slide-counter');
+function updateCounter() { counterEl.textContent = (current + 1) + ' / ' + totalSlides; }
+updateCounter();
+
+function goTo(i) {
+  if (i < 0 || i >= totalSlides) return;
+  slides[current].classList.remove('active');
+  current = i;
+  slides[current].classList.add('active');
+  updateCounter();
+}
+function go(dir) { goTo(current + dir); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.isContentEditable) return;
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); go(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+});
+
+function getTranslateY(el) {
+  const match = el.style.transform && el.style.transform.match(/translateY\((-?\d+(?:\.\d+)?)px\)/);
+  return match ? parseFloat(match[1]) : 0;
+}
+function setTranslateY(el, val) { el.style.transform = 'translateY(' + val + 'px)'; }
+
+function nudge(btn, dir) {
+  const block = btn.closest('.block');
+  setTranslateY(block, getTranslateY(block) + dir * NUDGE_STEP);
+}
+
+// ===== Image transform (scale + translate) =====
+// Разделение: перенос по слайду (tx/ty) живёт на обёртке .img-crop — окно кропа едет
+// вместе с картинкой; на самом img — масштаб и панорама внутри окна (только в режиме обрезки).
+const imageTransforms = new WeakMap();
+const wrapTransforms = new WeakMap();
+const DRAG_THRESHOLD = 4;
+
+function getImageTransform(img) {
+  if (!imageTransforms.has(img)) imageTransforms.set(img, { scale: 1, tx: 0, ty: 0 });
+  return imageTransforms.get(img);
+}
+function applyImageTransform(img) {
+  const s = getImageTransform(img);
+  img.style.transform = `translate(${s.tx}px, ${s.ty}px) scale(${s.scale})`;
+}
+function getWrapTransform(img) {
+  if (!wrapTransforms.has(img)) wrapTransforms.set(img, { tx: 0, ty: 0, scale: 1 });
+  return wrapTransforms.get(img);
+}
+function applyWrapTransform(img) {
+  const wrap = getCropWrap(img);
+  if (!wrap) return;
+  const w = getWrapTransform(img);
+  const c = getCrop(img);
+  // (l − r)/2 — компенсация flex-центрирования обрезанного окна.
+  // scale на обёртке масштабирует обрезанную картинку целиком (окно + содержимое).
+  wrap.style.transform = `translate(${w.tx + (c.l - c.r) / 2}px, ${w.ty}px) scale(${w.scale || 1})`;
+}
+
+// Capture-phase handlers for image interactions — run before generic block drag.
+let imgDragState = null;
+document.addEventListener('pointerdown', (e) => {
+  const img = e.target.closest('.story-image-block img');
+  if (!img) return;
+  // В режиме обрезки драг панорамирует картинку внутри окна; иначе — переносит обёртку целиком
+  const panning = (cropTarget === img);
+  const state = panning ? getImageTransform(img) : getWrapTransform(img);
+  imgDragState = {
+    img,
+    panning,
+    startX: e.clientX,
+    startY: e.clientY,
+    startTx: state.tx,
+    startTy: state.ty,
+    moved: false
+  };
+  img.classList.add('dragging');
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+document.addEventListener('pointermove', (e) => {
+  if (!imgDragState) return;
+  const dx = (e.clientX - imgDragState.startX);
+  const dy = (e.clientY - imgDragState.startY);
+  if (!imgDragState.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+    imgDragState.moved = true;
+  }
+  if (imgDragState.moved) {
+    const s = imgDragState.panning ? getImageTransform(imgDragState.img) : getWrapTransform(imgDragState.img);
+    // При панораме внутри увеличенного окна курсор должен вести картинку 1:1
+    const k = imgDragState.panning ? SCALE * (getWrapTransform(imgDragState.img).scale || 1) : SCALE;
+    s.tx = imgDragState.startTx + dx / k;
+    s.ty = imgDragState.startTy + dy / k;
+    (imgDragState.panning ? applyImageTransform : applyWrapTransform)(imgDragState.img);
+    e.preventDefault();
+  }
+}, true);
+document.addEventListener('pointerup', (e) => {
+  if (!imgDragState) return;
+  const { img, moved } = imgDragState;
+  imgDragState = null; // сбрасываем ДО openImageEditor — если тот упадёт, drag не «прилипнет»
+  img.classList.remove('dragging');
+  if (!moved) {
+    openImageEditor(img);
+    e.stopPropagation();
+  }
+}, true);
+document.addEventListener('pointercancel', () => {
+  if (!imgDragState) return;
+  imgDragState.img.classList.remove('dragging');
+  imgDragState = null;
+}, true);
+
+// ===== Обрезка картинки (crop) =====
+// Прямоугольная обрезка по 4 сторонам через обёртку .img-crop с overflow:hidden.
+// Компенсации маргинами/translateX держат необрезанные края на своих местах.
+const imageCrops = new WeakMap();
+let cropTarget = null; // img, у которого сейчас включён режим обрезки
+
+function getCrop(img) {
+  if (!imageCrops.has(img)) imageCrops.set(img, { t: 0, r: 0, b: 0, l: 0, w: 0, h: 0 });
+  return imageCrops.get(img);
+}
+function getCropWrap(img) { return img.closest('.img-crop'); }
+function ensureCropWrap(img) {
+  let wrap = getCropWrap(img);
+  if (wrap) return wrap;
+  wrap = document.createElement('div');
+  wrap.className = 'img-crop';
+  img.parentNode.insertBefore(wrap, img);
+  wrap.appendChild(img);
+  return wrap;
+}
+document.querySelectorAll('.story-image-block img').forEach(ensureCropWrap);
+
+function applyCrop(img) {
+  const wrap = getCropWrap(img);
+  if (!wrap) return;
+  const c = getCrop(img);
+  if (!(c.t || c.r || c.b || c.l)) {
+    // Чистим только crop-свойства: transform обёртки хранит перенос картинки, его не трогаем
+    wrap.style.overflow = '';
+    wrap.style.width = ''; wrap.style.height = '';
+    wrap.style.marginTop = ''; wrap.style.marginBottom = '';
+    img.style.width = ''; img.style.height = '';
+    img.style.maxWidth = ''; img.style.maxHeight = '';
+    img.style.marginLeft = ''; img.style.marginTop = '';
+    applyWrapTransform(img);
+    return;
+  }
+  wrap.style.overflow = 'hidden';
+  wrap.style.width = (c.w - c.l - c.r) + 'px';
+  wrap.style.height = (c.h - c.t - c.b) + 'px';
+  // Вертикаль: маргины сохраняют суммарную высоту блока — соседние блоки не съезжают,
+  // а необрезанный край остаётся на месте.
+  wrap.style.marginTop = c.t + 'px';
+  wrap.style.marginBottom = c.b + 'px';
+  // Горизонталь (компенсация центрирования) — внутри applyWrapTransform вместе с переносом.
+  applyWrapTransform(img);
+  // Фиксируем layout-размер картинки: иначе max-width:100% сожмёт её под окно кропа.
+  img.style.width = c.w + 'px'; img.style.height = c.h + 'px';
+  img.style.maxWidth = 'none'; img.style.maxHeight = 'none';
+  img.style.marginLeft = (-c.l) + 'px';
+  img.style.marginTop = (-c.t) + 'px';
+}
+
+function resetCrop(img) {
+  const c = getCrop(img);
+  c.t = c.r = c.b = c.l = 0; c.w = 0; c.h = 0;
+  if (cropTarget === img) exitCropMode();
+  // Панорама внутри окна без окна не имеет смысла; перенос (на обёртке) сохраняем
+  const t = getImageTransform(img);
+  t.tx = 0; t.ty = 0;
+  applyImageTransform(img);
+  applyCrop(img);
+}
+
+function toggleCropMode() {
+  const target = activeImgTarget;
+  if (!target) return;
+  if (cropTarget === target) { exitCropMode(); return; }
+  exitCropMode();
+  cropTarget = target;
+  const wrap = ensureCropWrap(target);
+  const c = getCrop(target);
+  if (!c.w) { c.w = target.offsetWidth; c.h = target.offsetHeight; }
+  wrap.classList.add('cropping');
+  ['top', 'bottom', 'left', 'right'].forEach(side => {
+    const h = document.createElement('div');
+    h.className = 'crop-handle';
+    h.dataset.side = side;
+    h.addEventListener('pointerdown', startCropDrag);
+    wrap.appendChild(h);
+  });
+  const btn = document.getElementById('crop-btn');
+  if (btn) btn.textContent = '✂ Готово';
+  syncScaleUI(target); // в режиме обрезки слайдер = зум внутри окна
+}
+function exitCropMode() {
+  if (!cropTarget) return;
+  const wrap = getCropWrap(cropTarget);
+  if (wrap) {
+    wrap.classList.remove('cropping');
+    wrap.querySelectorAll('.crop-handle').forEach(h => h.remove());
+  }
+  cropTarget = null;
+  const btn = document.getElementById('crop-btn');
+  if (btn) btn.textContent = '✂ Обрезка';
+  if (activeImgTarget) syncScaleUI(activeImgTarget); // слайдер обратно = масштаб целиком
+}
+
+let cropDragState = null;
+const CROP_MIN = 100; // окно кропа не меньше 100px по каждой оси
+function startCropDrag(e) {
+  if (!cropTarget) return;
+  cropDragState = { side: e.currentTarget.dataset.side, startX: e.clientX, startY: e.clientY, start: { ...getCrop(cropTarget) } };
+  e.currentTarget.classList.add('dragging');
+  e.currentTarget.setPointerCapture(e.pointerId);
+  e.stopPropagation();
+  e.preventDefault();
+}
+function cropClamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+document.addEventListener('pointermove', (e) => {
+  if (!cropDragState || !cropTarget) return;
+  const c = getCrop(cropTarget);
+  const s = cropDragState.start;
+  const k = SCALE * (getWrapTransform(cropTarget).scale || 1); // ручки на увеличенном окне тоже 1:1
+  const dx = (e.clientX - cropDragState.startX) / k;
+  const dy = (e.clientY - cropDragState.startY) / k;
+  if (cropDragState.side === 'top')    c.t = cropClamp(s.t + dy, 0, c.h - s.b - CROP_MIN);
+  if (cropDragState.side === 'bottom') c.b = cropClamp(s.b - dy, 0, c.h - s.t - CROP_MIN);
+  if (cropDragState.side === 'left')   c.l = cropClamp(s.l + dx, 0, c.w - s.r - CROP_MIN);
+  if (cropDragState.side === 'right')  c.r = cropClamp(s.r - dx, 0, c.w - s.l - CROP_MIN);
+  applyCrop(cropTarget);
+  e.preventDefault();
+});
+document.addEventListener('pointerup', () => {
+  if (!cropDragState) return;
+  document.querySelectorAll('.crop-handle.dragging').forEach(h => h.classList.remove('dragging'));
+  cropDragState = null;
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') exitCropMode(); });
+
+// ===== Image Editor Panel =====
+const imgEditorPanel = document.getElementById('image-editor');
+const imgScaleInput = document.getElementById('img-scale');
+const imgScaleValue = document.getElementById('img-scale-value');
+const imgUrlInput = document.getElementById('img-url-input');
+let activeImgTarget = null;
+
+// Слайдер масштаба: в режиме обрезки — зум картинки внутри окна,
+// вне режима — масштаб всей (обрезанной) картинки целиком через scale обёртки.
+function syncScaleUI(img) {
+  const scale = (cropTarget === img) ? getImageTransform(img).scale : (getWrapTransform(img).scale || 1);
+  imgScaleInput.value = Math.round(scale * 100);
+  imgScaleValue.textContent = Math.round(scale * 100) + '%';
+}
+
+function openImageEditor(img) {
+  closeSizeEditor();
+  activeImgTarget = img;
+  syncScaleUI(img);
+  imgUrlInput.value = img.getAttribute('src') || '';
+  const rect = img.getBoundingClientRect();
+  let left = rect.right + 12, top = rect.top;
+  if (left + 320 > window.innerWidth) left = rect.left - 330;
+  if (left < 8) left = 8;
+  if (top + 260 > window.innerHeight) top = window.innerHeight - 270;
+  if (top < 50) top = 50;
+  imgEditorPanel.style.left = left + 'px';
+  imgEditorPanel.style.top = top + 'px';
+  imgEditorPanel.classList.add('visible');
+}
+function closeImageEditor() {
+  imgEditorPanel.classList.remove('visible');
+  exitCropMode();
+  activeImgTarget = null;
+}
+imgScaleInput.addEventListener('input', () => {
+  const val = +imgScaleInput.value;
+  imgScaleValue.textContent = val + '%';
+  if (!activeImgTarget) return;
+  if (cropTarget === activeImgTarget) {
+    const s = getImageTransform(activeImgTarget);
+    s.scale = val / 100;
+    applyImageTransform(activeImgTarget);
+  } else {
+    const w = getWrapTransform(activeImgTarget);
+    w.scale = val / 100;
+    applyWrapTransform(activeImgTarget);
+  }
+});
+imgUrlInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); applyImageUrl(); }
+  e.stopPropagation();
+});
+imgUrlInput.addEventListener('change', applyImageUrl);
+// Внешние URL идут через /proxy (server.py) и превращаются в data URL —
+// иначе html2canvas не отрендерит cross-origin картинку при экспорте.
+async function setImageSrc(img, url) {
+  if (!url) return;
+  resetCrop(img); // новая картинка — старая обрезка не имеет смысла
+  if (!/^https?:\/\//i.test(url)) { img.src = url; return; }
+  img.style.opacity = '0.4';
+  try {
+    const resp = await fetch('/proxy?url=' + encodeURIComponent(url));
+    if (!resp.ok) throw new Error('proxy ' + resp.status);
+    const blob = await resp.blob();
+    const dataUrl = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+    img.src = dataUrl;
+    img.dataset.sourceUrl = url;
+  } catch (e) {
+    console.warn('proxy failed, using direct URL', e);
+    img.src = url; // покажется в браузере, но может пропасть при экспорте
+    showToast('⚠ прокси недоступен — запусти python3 server.py');
+  } finally {
+    img.style.opacity = '';
+  }
+}
+function applyImageUrl() {
+  if (!activeImgTarget) return;
+  const url = imgUrlInput.value.trim();
+  if (!url) return;
+  setImageSrc(activeImgTarget, url);
+}
+function resetImageTransform() {
+  if (!activeImgTarget) return;
+  const s = getImageTransform(activeImgTarget);
+  s.scale = 1; s.tx = 0; s.ty = 0;
+  applyImageTransform(activeImgTarget);
+  const w = getWrapTransform(activeImgTarget);
+  w.tx = 0; w.ty = 0; w.scale = 1;
+  resetCrop(activeImgTarget); // внутри вызовет applyCrop → applyWrapTransform
+  imgScaleInput.value = 100;
+  imgScaleValue.textContent = '100%';
+}
+
+// ===== Load local file (button in editor panel) =====
+const imgFileInput = document.getElementById('img-file-input');
+imgFileInput.addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file || !activeImgTarget) return;
+  loadFileIntoImage(file, activeImgTarget);
+  imgFileInput.value = '';
+});
+
+function loadFileIntoImage(file, img) {
+  if (!file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    resetCrop(img); // новая картинка — старая обрезка не имеет смысла
+    img.src = ev.target.result;
+    if (img === activeImgTarget) imgUrlInput.value = '[файл: ' + file.name + ']';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ===== Drag-and-drop file onto image =====
+function attachImageDropHandlers(img) {
+  img.addEventListener('dragenter', (e) => { e.preventDefault(); e.stopPropagation(); img.classList.add('drop-target'); });
+  img.addEventListener('dragover',  (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; });
+  img.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); img.classList.remove('drop-target'); });
+  img.addEventListener('drop', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    img.classList.remove('drop-target');
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) { loadFileIntoImage(file, img); return; }
+    // Drop миниатюры из мудборда или URL из другого окна
+    const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').trim().split('\n')[0];
+    if (url && /^https?:\/\//i.test(url)) setImageSrc(img, url);
+  });
+}
+document.querySelectorAll('.story-image-block img').forEach(attachImageDropHandlers);
+
+// Prevent the browser from navigating away if the drop misses the image
+const isDraggablePayload = (dt) => dt && (dt.types.includes('Files') || dt.types.includes('text/uri-list'));
+window.addEventListener('dragover', (e) => { if (isDraggablePayload(e.dataTransfer)) e.preventDefault(); });
+window.addEventListener('drop',     (e) => { if (isDraggablePayload(e.dataTransfer)) e.preventDefault(); });
+
+// ===== Toast =====
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('visible'), 2200);
+}
+
+// ===== Moodboard gallery =====
+// Данные подхватываются из moodboard-data.js (window.MOODBOARD_DATA = [{src, label, section, source?, orient?}]).
+// Файл подключается тегом script src="moodboard-data.js" перед этим скриптом.
+// ВАЖНО: внутри инлайн-скрипта нельзя писать закрывающий тег script даже в комментарии — браузер оборвёт скрипт.
+// Если файла нет или массив пуст — кнопка «Мудборд» не показывается.
+const MOODBOARD = window.MOODBOARD_DATA || [];
+
+const mbOverlay = document.getElementById('moodboard-overlay');
+const mbContent = document.getElementById('moodboard-content');
+let mbTargetImg = null; // куда вставлять клик по миниатюре; null = картинка текущего слайда
+
+function currentSlideImage() {
+  return document.querySelector('.story-wrap.active .story-image-block img');
+}
+function openMoodboard(targetImg) {
+  mbTargetImg = targetImg || null;
+  document.getElementById('mb-hint').textContent = mbTargetImg
+    ? 'Клик по миниатюре — вставить в выбранную картинку слайда.'
+    : 'Клик по миниатюре — вставить в картинку текущего слайда. Кнопка URL — скопировать ссылку.';
+  mbOverlay.classList.add('visible');
+}
+function closeMoodboard() {
+  mbOverlay.classList.remove('visible');
+  mbTargetImg = null;
+}
+mbOverlay.addEventListener('mousedown', (e) => { if (e.target === mbOverlay) closeMoodboard(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && mbOverlay.classList.contains('visible')) closeMoodboard();
+});
+
+function renderMoodboard() {
+  if (!MOODBOARD.length) return;
+  document.getElementById('moodboard-btn').style.display = '';
+  document.getElementById('moodboard-sep').style.display = '';
+  document.getElementById('mb-open-btn').style.display = '';
+  const sections = [...new Set(MOODBOARD.map(i => i.section))];
+  sections.forEach(sec => {
+    const h = document.createElement('h3');
+    h.textContent = sec;
+    mbContent.appendChild(h);
+    const grid = document.createElement('div');
+    grid.className = 'mb-grid';
+    MOODBOARD.filter(i => i.section === sec).forEach(item => {
+      const cell = document.createElement('div');
+      cell.className = 'mb-item';
+      const t = document.createElement('img');
+      t.src = item.src;
+      t.loading = 'lazy';
+      t.referrerPolicy = 'no-referrer';
+      t.onerror = () => cell.classList.add('broken');
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'mb-copy';
+      copyBtn.textContent = 'URL';
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard && navigator.clipboard.writeText(item.src);
+        showToast('URL скопирован');
+      });
+      const lbl = document.createElement('div');
+      lbl.className = 'mb-label';
+      lbl.textContent = item.label || '';
+      cell.appendChild(t); cell.appendChild(copyBtn); cell.appendChild(lbl);
+      cell.addEventListener('click', () => {
+        const target = mbTargetImg || activeImgTarget || currentSlideImage();
+        if (!target) { showToast('На этом слайде нет картинки'); return; }
+        setImageSrc(target, item.src);
+        showToast('Картинка вставлена');
+        closeMoodboard();
+      });
+      grid.appendChild(cell);
+    });
+    mbContent.appendChild(grid);
+  });
+}
+renderMoodboard();
+
+// Внешние URL, зашитые в src при генерации поста, прогоняем через прокси сразу,
+// иначе html2canvas потеряет их при экспорте (CORS).
+document.querySelectorAll('.story-image-block img').forEach(img => {
+  const src = img.getAttribute('src') || '';
+  if (/^https?:\/\//i.test(src)) setImageSrc(img, src);
+});
+document.addEventListener('mousedown', (e) => {
+  if (!imgEditorPanel.classList.contains('visible')) return;
+  if (imgEditorPanel.contains(e.target)) return;
+  if (e.target.closest('.story-image-block img')) return;
+  if (e.target.closest('.moodboard-overlay')) return; // клик по мудборду не сбрасывает выбор картинки
+  closeImageEditor();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && imgEditorPanel.classList.contains('visible')) closeImageEditor();
+});
+
+let dragState = null;
+document.addEventListener('dragstart', (e) => { if (e.target.closest('.block')) e.preventDefault(); });
+document.addEventListener('pointerdown', (e) => {
+  let block;
+  const handle = e.target.closest('.drag-handle');
+  if (handle) { block = handle.closest('.block'); }
+  else {
+    const candidate = e.target.closest('.block');
+    if (!candidate) return;
+    if (e.target.closest('.block-controls')) return;
+    const rect = candidate.getBoundingClientRect();
+    const localY = e.clientY - rect.top;
+    // Зоны захвата — 12px в координатах слайда; слайд отмасштабирован (SCALE),
+    // и у коротких блоков зоны не должны съедать всю высоту (иначе клик не фокусирует текст)
+    const edge = Math.min(12 * SCALE, rect.height / 4);
+    if (localY > edge && localY < rect.height - edge) return;
+    block = candidate;
+  }
+  dragState = { block, startY: e.clientY, startTranslateY: getTranslateY(block) };
+  block.classList.add('dragging');
+  e.preventDefault();
+});
+document.addEventListener('pointermove', (e) => {
+  if (!dragState) return;
+  e.preventDefault();
+  setTranslateY(dragState.block, dragState.startTranslateY + (e.clientY - dragState.startY) / SCALE);
+});
+document.addEventListener('pointerup', () => { if (!dragState) return; dragState.block.classList.remove('dragging'); dragState = null; });
+
+// html2canvas плохо рендерит transform-масштаб обёртки вместе с overflow:hidden,
+// поэтому при экспорте «запекаем» визуальную геометрию картинок в абсолютные
+// координаты (их html2canvas рендерит без ошибок). Геометрию берём из
+// getBoundingClientRect живого слайда и переводим в канвасные px делением на SCALE.
+function bakeImageGeometry(origStory, cloneStory) {
+  const origImgs = origStory.querySelectorAll('.story-image-block img');
+  const cloneImgs = cloneStory.querySelectorAll('.story-image-block img');
+  origImgs.forEach((oimg, i) => {
+    const owrap = oimg.closest('.img-crop');
+    const cimg = cloneImgs[i];
+    const cwrap = cimg && cimg.closest('.img-crop');
+    if (!owrap || !cwrap) return;
+    const oblock = owrap.closest('.story-image-block');
+    const cblock = cwrap.closest('.story-image-block');
+    const bRect = oblock.getBoundingClientRect();
+    const wRect = owrap.getBoundingClientRect();
+    const iRect = oimg.getBoundingClientRect();
+    // Обёртка выпадает из потока — фиксируем высоту блока, чтобы соседи не съехали
+    cblock.style.height = oblock.offsetHeight + 'px';
+    cwrap.style.position = 'absolute';
+    cwrap.style.left = ((wRect.left - bRect.left) / SCALE) + 'px';
+    cwrap.style.top = ((wRect.top - bRect.top) / SCALE) + 'px';
+    cwrap.style.width = (wRect.width / SCALE) + 'px';
+    cwrap.style.height = (wRect.height / SCALE) + 'px';
+    cwrap.style.margin = '0';
+    cwrap.style.transform = 'none';
+    cimg.style.position = 'absolute';
+    cimg.style.left = ((iRect.left - wRect.left) / SCALE) + 'px';
+    cimg.style.top = ((iRect.top - wRect.top) / SCALE) + 'px';
+    cimg.style.width = (iRect.width / SCALE) + 'px';
+    cimg.style.height = (iRect.height / SCALE) + 'px';
+    cimg.style.margin = '0';
+    cimg.style.maxWidth = 'none'; cimg.style.maxHeight = 'none';
+    cimg.style.transform = 'none';
+  });
+}
+
+async function captureStory(id, format) {
+  const el = document.getElementById(id);
+  el.querySelectorAll('[contenteditable]').forEach(e => e.blur());
+  const clone = el.cloneNode(true);
+  clone.style.transform = 'none';
+  clone.style.marginBottom = '0';
+  clone.style.position = 'fixed';
+  clone.style.left = '-9999px';
+  clone.style.top = '0';
+  clone.style.zIndex = '-1';
+  clone.querySelectorAll('.block-controls').forEach(h => h.remove());
+  clone.querySelectorAll('.crop-handle').forEach(h => h.remove());
+  clone.querySelectorAll('.img-crop.cropping').forEach(w => w.classList.remove('cropping'));
+  clone.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
+  bakeImageGeometry(el, clone);
+  document.body.appendChild(clone);
+  clone.style.height = currentFormat.h + 'px';
+  await new Promise(r => setTimeout(r, 100));
+  const canvas = await html2canvas(clone, { scale: 1, width: currentFormat.w, height: currentFormat.h, useCORS: true, backgroundColor: null });
+  document.body.removeChild(clone);
+  const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+  return canvas.toDataURL(mime, format === 'jpeg' ? 0.95 : undefined);
+}
+function dl(dataURL, filename) {
+  const a = document.createElement('a');
+  a.href = dataURL; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+// Формат холста: Instagram Stories/Reels 1080×1920 или пост 1080×1350.
+// Глобально на всю колоду; CSS-правило body.fmt-post .story меняет высоту и margin превью.
+const FORMATS = { story: { w: 1080, h: 1920 }, post: { w: 1080, h: 1350 } };
+let currentFormat = FORMATS.story;
+function setFormat(fmt) {
+  currentFormat = FORMATS[fmt];
+  document.body.classList.toggle('fmt-post', fmt === 'post');
+  document.querySelectorAll('.fmt-btn').forEach(b => b.classList.toggle('active', b.dataset.fmt === fmt));
+}
+
+const SIZE_CLASSES = ['story-text-sm', 'story-text', 'story-quote'];
+const sizePanel = document.getElementById('text-size-editor');
+const sizeBtns = sizePanel.querySelectorAll('.size-btn[data-size]'); // только S/M/L, не «+»/«−»
+let activeSizeTarget = null;
+
+function getTextSize(el) {
+  for (let i = 0; i < SIZE_CLASSES.length; i++) {
+    if (el.classList.contains(SIZE_CLASSES[i])) return i;
+  }
+  return -1;
+}
+
+// Точная подстройка шрифта по пунктам («+» / «−» в панели), поверх S/M/L
+function adjustFontSize(delta) {
+  if (!activeSizeTarget) return;
+  const cur = parseFloat(getComputedStyle(activeSizeTarget).fontSize);
+  activeSizeTarget.style.fontSize = Math.max(14, Math.round(cur + delta)) + 'px';
+  updateFontPx();
+}
+function updateFontPx() {
+  const el = document.getElementById('font-px');
+  el.textContent = activeSizeTarget
+    ? Math.round(parseFloat(getComputedStyle(activeSizeTarget).fontSize)) + 'px'
+    : '–';
+}
+
+function openSizeEditor(textEl) {
+  activeSizeTarget = textEl;
+  updateFontPx();
+  const cur = getTextSize(textEl);
+  sizeBtns.forEach(btn => btn.classList.toggle('active', +btn.dataset.size === cur));
+  const curAlign = textEl.style.textAlign || 'left';
+  alignBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.align === curAlign));
+  updateFontBtns();
+  const rect = textEl.getBoundingClientRect();
+  let left = rect.right + 12, top = rect.top;
+  if (left + 210 > window.innerWidth) left = rect.left - 220;
+  if (left < 8) left = 8;
+  sizePanel.style.left = left + 'px';
+  sizePanel.style.top = top + 'px';
+  sizePanel.classList.add('visible');
+  // Клэмп по фактической высоте панели (после появления секции шрифтов она высокая)
+  const ph = sizePanel.offsetHeight;
+  if (top + ph > window.innerHeight - 10) top = window.innerHeight - ph - 10;
+  if (top < 50) top = 50;
+  sizePanel.style.top = top + 'px';
+}
+
+function closeSizeEditor() {
+  sizePanel.classList.remove('visible');
+  activeSizeTarget = null;
+}
+
+sizeBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!activeSizeTarget) return;
+    const idx = +btn.dataset.size;
+    SIZE_CLASSES.forEach(c => activeSizeTarget.classList.remove(c));
+    // Заголовок/киккер тоже переводим на общую шкалу S/M/L
+    activeSizeTarget.classList.remove('story-title', 'story-kicker');
+    activeSizeTarget.classList.add(SIZE_CLASSES[idx]);
+    activeSizeTarget.style.fontSize = ''; // S/M/L сбрасывает точную подстройку
+    sizeBtns.forEach(b => b.classList.toggle('active', b === btn));
+    updateFontPx();
+  });
+});
+
+// Переключатель шрифта блока: меняется ТОЛЬКО font-family;
+// размер (font-size), начертание (bold/italic) и всё остальное остаются как были.
+const FONTS = [
+  { label: 'Inter', family: '' }, // базовый — пустая строка сбрасывает inline-стиль
+  { label: 'Unbounded', family: "'Unbounded', sans-serif" },
+  { label: 'Russo One', family: "'Russo One', sans-serif" },
+  { label: 'Playfair Display', family: "'Playfair Display', serif" },
+  { label: 'Lora', family: "'Lora', serif" },
+  { label: 'Golos Text', family: "'Golos Text', sans-serif" },
+  { label: 'Manrope', family: "'Manrope', sans-serif" },
+  { label: 'JetBrains Mono', family: "'JetBrains Mono', monospace" },
+];
+const fontRow = document.getElementById('font-row');
+// Первое имя семейства без кавычек — для сравнения style.fontFamily с data-family
+function famKey(v) { return (v || '').split(',')[0].replace(/['"]/g, '').trim(); }
+FONTS.forEach(f => {
+  const btn = document.createElement('div');
+  btn.className = 'font-btn';
+  btn.textContent = f.label;
+  btn.dataset.family = f.family;
+  btn.style.fontFamily = f.family || "'Inter', sans-serif";
+  btn.addEventListener('click', () => {
+    if (!activeSizeTarget) return;
+    activeSizeTarget.style.fontFamily = f.family;
+    updateFontBtns();
+  });
+  fontRow.appendChild(btn);
+});
+function updateFontBtns() {
+  const cur = famKey(activeSizeTarget ? activeSizeTarget.style.fontFamily : '');
+  fontRow.querySelectorAll('.font-btn').forEach(b => b.classList.toggle('active', famKey(b.dataset.family) === cur));
+}
+
+const alignBtns = sizePanel.querySelectorAll('.align-btn');
+alignBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!activeSizeTarget) return;
+    activeSizeTarget.style.textAlign = btn.dataset.align;
+    alignBtns.forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
+function wireTextPanel(el) {
+  el.addEventListener('focus', (e) => {
+    if (e.target.closest('.block-controls')) return;
+    openSizeEditor(el);
+  });
+}
+document.querySelectorAll('.story-text, .story-text-sm, .story-quote, .story-title, .story-kicker, .story-bullets').forEach(wireTextPanel);
+
+document.addEventListener('mousedown', (e) => {
+  if (!sizePanel.classList.contains('visible')) return;
+  if (sizePanel.contains(e.target)) return;
+  if (activeSizeTarget && activeSizeTarget.contains(e.target)) return;
+  closeSizeEditor();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && sizePanel.classList.contains('visible')) closeSizeEditor();
+});
+
+function setSlideBg(color, isDark) {
+  const story = slides[current].querySelector('.story');
+  if (!story) return;
+  story.classList.remove('story-white','story-gray','story-black');
+  story.style.background = color;
+  if (isDark) story.classList.add('story-black');
+}
+
+document.querySelectorAll('.bg-swatch').forEach(sw => {
+  sw.addEventListener('click', () => {
+    setSlideBg(sw.dataset.bg, sw.dataset.dark === '1');
+  });
+});
+
+// ===== Text color / highlight swatches (work on current selection) =====
+document.querySelectorAll('.text-size-editor .color-row').forEach(row => {
+  const mode = row.dataset.mode;
+  row.querySelectorAll('.color-swatch').forEach(sw => {
+    // mousedown prevents focus loss so the selection stays intact
+    sw.addEventListener('mousedown', (e) => { e.preventDefault(); });
+    sw.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!activeSizeTarget) return;
+      const color = sw.dataset.color;
+      const sel = window.getSelection();
+      const hasSelection = sel && sel.rangeCount && !sel.isCollapsed
+        && activeSizeTarget.contains(sel.anchorNode) && activeSizeTarget.contains(sel.focusNode);
+      if (hasSelection) {
+        // Есть выделение — красим только его
+        activeSizeTarget.focus();
+        try { document.execCommand('styleWithCSS', false, true); } catch {}
+        if (mode === 'text') {
+          document.execCommand('foreColor', false, color);
+        } else {
+          // Highlight: Chrome/Safari hiliteColor, Firefox uses backColor
+          const cmd = (document.queryCommandSupported && document.queryCommandSupported('hiliteColor')) ? 'hiliteColor' : 'backColor';
+          document.execCommand(cmd, false, color);
+        }
+      } else {
+        // Выделения нет — красим весь текстовый блок
+        if (mode === 'text') {
+          activeSizeTarget.style.color = color === 'transparent' ? '' : color;
+        } else if (color === 'transparent') {
+          activeSizeTarget.style.background = '';
+          activeSizeTarget.querySelectorAll('span, font, b, i').forEach(n => { n.style.backgroundColor = ''; });
+        } else {
+          activeSizeTarget.style.background = color;
+        }
+      }
+    });
+  });
+});
+
+function addTextBlock() {
+  const activeSlide = slides[current].querySelector('.story');
+  if (!activeSlide) return;
+  const footer = activeSlide.querySelector('.story-footer');
+  const block = document.createElement('div');
+  block.className = 'block';
+  block.innerHTML = `
+    <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
+    <div class="story-text" contenteditable="true">текст…</div>
+  `;
+  if (footer) { activeSlide.insertBefore(block, footer); }
+  else { activeSlide.appendChild(block); }
+  const textEl = block.querySelector('.story-text');
+  wireTextPanel(textEl);
+  textEl.focus();
+}
+
+// ── Подпись в футере ──────────────────────────────────────────────
+// Ключ хранится в localStorage. При первом открытии редактор спрашивает
+// адрес блога / имя; если пользователь выбрал «Без подписи» — сохраняется
+// пустая строка и футеры остаются чистыми. Ключ существует → больше не спрашиваем.
+const SIG_KEY = 'stories_footer_signature';
+function applySignature(v) {
+  document.querySelectorAll('.footer-sig').forEach(el => { el.textContent = v || ''; });
+}
+function saveSignature(v) {
+  v = (v || '').trim();
+  localStorage.setItem(SIG_KEY, v);
+  applySignature(v);
+  document.getElementById('sig-overlay').classList.remove('visible');
+}
+function openSignature() {
+  const cur = localStorage.getItem(SIG_KEY) || '';
+  const input = document.getElementById('sig-input');
+  input.value = cur;
+  document.getElementById('sig-overlay').classList.add('visible');
+  input.focus();
+  input.select();
+}
+document.getElementById('sig-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveSignature(e.target.value); }
+  if (e.key === 'Escape') { document.getElementById('sig-overlay').classList.remove('visible'); }
+});
+(function initSignature() {
+  const stored = localStorage.getItem(SIG_KEY);
+  if (stored === null) { openSignature(); }   // ни разу не спрашивали — спросить
+  else { applySignature(stored); }             // уже есть значение (в т.ч. пустое) — применить
+})();
+
+async function downloadOne(index, format) {
+  try {
+    const prev = current; goTo(index);
+    await new Promise(r => setTimeout(r, 100));
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    const data = await captureStory(storyIds[index], format);
+    dl(data, `story-${String(index + 1).padStart(2,'0')}.${ext}`);
+    goTo(prev);
+  } catch(e) { console.error(e); alert('Запусти локальный сервер:\npython3 server.py 8089'); }
+}
+async function downloadAll(format) {
+  try {
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    const prev = current;
+    for (let i = 0; i < storyIds.length; i++) {
+      goTo(i); await new Promise(r => setTimeout(r, 150));
+      const data = await captureStory(storyIds[i], format);
+      dl(data, `story-${String(i + 1).padStart(2,'0')}.${ext}`);
+      await new Promise(r => setTimeout(r, 200));
+    }
+    goTo(prev);
+  } catch(e) { console.error(e); alert('Запусти локальный сервер:\npython3 server.py 8089'); }
+}
+</script>
+</body>
+</html>

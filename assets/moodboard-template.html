@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITLE}} — Мудборд</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@300;400;600&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #222;
+    --text: #d4d0c8;
+    --text-dim: #706f6a;
+    --text-bright: #f0ece4;
+    --accent: #c8553d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Source Sans 3', sans-serif;
+    font-weight: 300;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    z-index: 9999;
+  }
+
+  .header {
+    padding: 48px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+
+  .header h1 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 400;
+    font-size: 28px;
+    color: var(--text-bright);
+  }
+
+  .header h1 em { color: var(--accent); }
+
+  .header-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 8px;
+  }
+
+  .nav {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  .nav a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+
+  .nav a:hover, .nav a.active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 32px 24px 120px;
+  }
+
+  .section {
+    margin-bottom: 64px;
+  }
+
+  .section-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    color: var(--accent);
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .grid {
+    display: grid;
+    gap: 12px;
+  }
+
+  .grid-posters { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .grid-stills { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .grid-people { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .grid-refs { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+
+  .card {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .card:hover {
+    border-color: #444;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  .card img {
+    width: 100%;
+    display: block;
+    min-height: 120px;
+    object-fit: cover;
+    background: #1a1a1a;
+  }
+
+  .card-label {
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .card-label strong {
+    display: block;
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-bottom: 2px;
+  }
+
+  .card-label a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .card-label a:hover {
+    color: var(--text-bright);
+    text-decoration: underline;
+  }
+
+  .card-actions {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .card:hover .card-actions { opacity: 1; }
+
+  .card-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 4px 8px;
+    background: rgba(0,0,0,0.85);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #fff;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .card-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.95);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+  }
+
+  .lightbox.open { display: flex; }
+
+  .lightbox img {
+    max-width: 92vw;
+    max-height: 90vh;
+    object-fit: contain;
+  }
+
+  .lightbox-info {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    background: rgba(0,0,0,0.8);
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    text-align: center;
+    max-width: 80vw;
+    word-break: break-all;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 10px 18px;
+    background: var(--accent);
+    color: #fff;
+    z-index: 20000;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s;
+    pointer-events: none;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .card img.failed {
+    min-height: 60px;
+    position: relative;
+  }
+
+  .card.img-failed { opacity: 0.3; }
+
+  @media (max-width: 640px) {
+    .header { padding: 24px 16px 20px; }
+    .container { padding: 20px 12px 80px; }
+    .grid-stills { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>{{TITLE_HTML}}</h1>
+  <div class="header-sub">{{SUBTITLE}}</div>
+  <nav class="nav" id="nav"></nav>
+</div>
+
+<div class="container" id="app"></div>
+
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lb-img" src="">
+  <div class="lightbox-info" id="lb-info"></div>
+</div>
+
+<div class="toast" id="toast">URL скопирован</div>
+
+<script src="moodboard-data.js"></script>
+<script>
+// Секции строятся из общего файла данных moodboard-data.js —
+// того же, что питает попап-галерею в stories.html.
+// Сетка выбирается автоматически: секции с преобладанием вертикальных
+// картинок получают grid-posters, остальные — grid-stills.
+const data = window.MOODBOARD_DATA || [];
+const sectionNames = [...new Set(data.map(i => i.section))];
+const SECTIONS = sectionNames.map((name, idx) => {
+  const items = data.filter(i => i.section === name);
+  const portraits = items.filter(i => i.orient === 'portrait').length;
+  return {
+    id: 'sec-' + idx,
+    title: String(idx + 1).padStart(2, '0') + ' — ' + name,
+    grid: portraits > items.length / 2 ? 'grid-posters' : 'grid-stills',
+    items
+  };
+});
+
+function render() {
+  const app = document.getElementById('app');
+  const nav = document.getElementById('nav');
+
+  nav.innerHTML = SECTIONS.map(s =>
+    `<a href="#${s.id}">${s.title.split(' — ')[1] || s.title}</a>`
+  ).join('');
+
+  app.innerHTML = SECTIONS.map(s => `
+    <div class="section" id="${s.id}">
+      <div class="section-title">${s.title} <span style="float:right;color:var(--text-dim)">${s.items.length}</span></div>
+      <div class="grid ${s.grid}">
+        ${s.items.map((item, i) => `
+          <div class="card" data-src="${item.src}">
+            <div class="card-actions">
+              <button class="card-btn" onclick="event.stopPropagation(); copyUrl('${item.src}')">URL</button>
+              <button class="card-btn" onclick="event.stopPropagation(); saveImg('${item.src}', '${item.label.replace(/'/g, "\\'")}')">Save</button>
+            </div>
+            <img src="${item.src}"
+                 alt="${item.label}"
+                 loading="lazy"
+                 referrerpolicy="no-referrer"
+                 onerror="this.classList.add('failed'); this.parentElement.classList.add('img-failed')"
+                 onclick="openLightbox('${item.src}', '${item.label.replace(/'/g, "\\'")}')">
+            <div class="card-label">
+              <strong>${item.label}</strong>
+              ${item.source ? `<a href="${item.source}" target="_blank" onclick="event.stopPropagation()">источник &rarr;</a>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function openLightbox(src, label) {
+  const lb = document.getElementById('lightbox');
+  document.getElementById('lb-img').src = src;
+  document.getElementById('lb-info').textContent = label + ' — ' + src;
+  lb.classList.add('open');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+function copyUrl(url) {
+  navigator.clipboard.writeText(url);
+  showToast('URL скопирован');
+}
+
+async function saveImg(url, label) {
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = label.replace(/[^a-zA-Zа-яА-Я0-9]/g, '_') + '.' + (url.split('.').pop().split('?')[0] || 'jpg');
+    a.target = '_blank';
+    a.click();
+    showToast('Скачивание...');
+  } catch(e) {
+    window.open(url, '_blank');
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1500);
+}
+
+render();
+</script>
+</body>
+</html>
