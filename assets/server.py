@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""HTTP server with image proxy endpoint for CORS-free export via html2canvas."""
+"""HTTP server with image proxy endpoint for CORS-free export via html2canvas
+and a /save endpoint that writes the editor state back to the HTML file."""
 
 import http.server
+import os
+import shutil
+import tempfile
 import urllib.request
 import urllib.parse
 import sys
+
+MAX_SAVE_BYTES = 200 * 1024 * 1024  # data-URL картинки легко раздувают файл
 
 
 class ProxyHandler(http.server.SimpleHTTPRequestHandler):
@@ -13,6 +19,43 @@ class ProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_proxy()
         else:
             super().do_GET()
+
+    def do_POST(self):
+        if self.path.startswith('/save'):
+            self.handle_save()
+        else:
+            self.send_error(404)
+
+    def handle_save(self):
+        query = urllib.parse.urlparse(self.path).query
+        name = urllib.parse.parse_qs(query).get('name', [None])[0]
+        # basename отсекает path traversal: сохраняем только в папку, откуда раздаём
+        name = os.path.basename(name or '')
+        if not name.endswith('.html'):
+            self.send_error(400, 'Only .html files can be saved')
+            return
+        length = int(self.headers.get('Content-Length') or 0)
+        if not 0 < length <= MAX_SAVE_BYTES:
+            self.send_error(400, f'Bad Content-Length: {length}')
+            return
+        body = self.rfile.read(length)
+        target = os.path.join(os.getcwd(), name)
+        try:
+            if os.path.exists(target):
+                backup = name[:-len('.html')] + '.backup.html'
+                shutil.copy2(target, os.path.join(os.getcwd(), backup))
+            fd, tmp = tempfile.mkstemp(dir=os.getcwd(), suffix='.tmp')
+            with os.fdopen(fd, 'wb') as f:
+                f.write(body)
+            os.replace(tmp, target)  # атомарная замена
+        except Exception as e:
+            self.send_error(500, f'Save failed: {e}')
+            return
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', '2')
+        self.end_headers()
+        self.wfile.write(b'ok')
 
     def handle_proxy(self):
         query = urllib.parse.urlparse(self.path).query

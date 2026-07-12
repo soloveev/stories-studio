@@ -13,13 +13,14 @@
   .toolbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
     background: #1a1a1a; border-bottom: 1px solid #333;
-    padding: 8px 24px;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 5px 16px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex-wrap: wrap; /* страховка на узких окнах — кнопки переносятся, а не вылезают */
   }
   .toolbar button {
     background: #333; color: #ccc; border: 1px solid #555;
-    padding: 7px 14px; font-family: 'JetBrains Mono', monospace;
-    font-size: 12px; cursor: pointer; border-radius: 4px;
+    padding: 5px 9px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; cursor: pointer; border-radius: 4px;
     transition: all 0.15s;
   }
   .toolbar button:hover { background: #444; color: #fff; border-color: #666; }
@@ -106,11 +107,12 @@
     background: #333; color: #ccc; border: 1px solid #555;
     padding: 7px 14px; font-family: 'JetBrains Mono', monospace;
     font-size: 12px; cursor: pointer; border-radius: 4px;
-    margin-right: 6px;
   }
   .image-editor .editor-btn:hover { background: #444; color: #fff; }
+  /* Кнопки панели: одинаковый зазор по горизонтали и вертикали при переносе */
+  .image-editor .btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .image-editor .hint {
-    margin-top: 6px; color: #666; font-size: 11px; line-height: 1.5;
+    margin-top: 12px; color: #666; font-size: 11px; line-height: 1.5;
   }
 
   /* Moodboard popup */
@@ -121,33 +123,6 @@
     overflow-y: auto; padding: 56px 24px 40px;
   }
   .moodboard-overlay.visible { display: flex; }
-
-  .sig-overlay {
-    position: fixed; inset: 0; z-index: 400;
-    background: rgba(0,0,0,0.72); display: none;
-    align-items: center; justify-content: center;
-  }
-  .sig-overlay.visible { display: flex; }
-  .sig-modal {
-    width: 420px; max-width: 90vw; background: #1e1e1e;
-    border: 1px solid #333; border-radius: 14px; padding: 26px;
-    font-family: 'Inter', sans-serif; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  }
-  .sig-modal .sig-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-  .sig-modal .sig-hint { font-size: 12px; color: #999; line-height: 1.55; margin-bottom: 16px; }
-  .sig-modal .sig-input {
-    width: 100%; background: #111; border: 1px solid #444; border-radius: 8px;
-    color: #fff; font-size: 14px; padding: 11px 13px; font-family: 'JetBrains Mono', monospace;
-  }
-  .sig-modal .sig-input:focus { outline: none; border-color: #4af; }
-  .sig-modal .sig-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-  .sig-modal .sig-actions button {
-    background: #333; color: #ccc; border: 1px solid #555; border-radius: 8px;
-    padding: 9px 16px; font-size: 13px; cursor: pointer;
-  }
-  .sig-modal .sig-actions button:hover { background: #444; color: #fff; }
-  .sig-modal .sig-actions .sig-save { background: #2563eb; border-color: #2563eb; color: #fff; }
-  .sig-modal .sig-actions .sig-save:hover { background: #1d4ed8; }
   .moodboard-modal {
     background: #161616; border: 1px solid #333; border-radius: 10px;
     max-width: 1100px; width: 100%; padding: 20px 24px 28px;
@@ -260,6 +235,16 @@
   [contenteditable="true"]:focus { box-shadow: inset 0 0 0 2px rgba(0,120,255,0.4); }
 
   .block { position: relative; transition: transform 0.15s ease; touch-action: none; }
+  /* Горизонтальный ресайз текста: 12px-зоны по краям payload'а рисуют курсор ew-resize;
+     реальную работу делает JS-проверка координат в pointerdown */
+  .story-title, .story-kicker, .story-text, .story-text-sm, .story-quote, .story-bullets { position: relative; }
+  .story-title::before, .story-kicker::before, .story-text::before, .story-text-sm::before, .story-quote::before, .story-bullets::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 12px; cursor: ew-resize;
+  }
+  .story-title::after, .story-kicker::after, .story-text::after, .story-text-sm::after, .story-quote::after, .story-bullets::after {
+    content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 12px; cursor: ew-resize;
+  }
+  .h-resizing { box-shadow: inset 0 0 0 3px rgba(0, 120, 255, 0.45); }
   .story img { -webkit-user-drag: none; user-select: none; }
   .block .block-controls { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.2s; z-index: 10; }
   .block:hover .block-controls { opacity: 1; }
@@ -268,6 +253,9 @@
   .drag-handle { width: 40px; height: 28px; background: rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; cursor: grab; font-size: 16px; color: #999; user-select: none; letter-spacing: 2px; }
   .drag-handle:hover { background: rgba(0,0,0,0.12); color: #000; }
   .drag-handle:active { cursor: grabbing; }
+  .editor-btn.danger, .size-btn.danger { color: #f77; border-color: rgba(255,100,100,0.3); }
+  .editor-btn.danger:hover, .size-btn.danger:hover { background: rgba(200,40,40,0.25); color: #f99; }
+  .size-btn.danger { margin-top: 10px; }
   .block::before, .block::after { content: ''; position: absolute; left: 0; right: 0; height: 12px; cursor: ns-resize; z-index: 5; }
   .block::before { top: 0; } .block::after { bottom: 0; }
   .block.dragging { opacity: 0.5; z-index: 100; position: relative; transition: none; }
@@ -287,8 +275,9 @@
   .size-btn { flex: 1; padding: 8px 0; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #888; transition: all 0.15s; }
   .size-btn:hover { background: #333; color: #fff; }
   .size-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
-  .font-row { display: flex; flex-direction: column; gap: 4px; }
-  .font-btn { padding: 6px 10px; background: #222; border: 1px solid #444; border-radius: 4px; text-align: left; cursor: pointer; font-size: 14px; color: #aaa; transition: all 0.15s; }
+  /* Сетка 2×4 вместо столбика — панель текста компактнее в два раза */
+  .font-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .font-btn { padding: 5px 6px; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; cursor: pointer; font-size: 12px; color: #aaa; transition: all 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .font-btn:hover { background: #333; color: #fff; }
   .font-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
   .align-btn-row { display: flex; gap: 6px; margin-top: 10px; }
@@ -306,13 +295,41 @@
     transition: transform 0.1s, border-color 0.1s;
   }
   .color-swatch:hover { transform: scale(1.12); border-color: rgba(255,255,255,0.5); }
-  .toolbar .bg-swatches { display: flex; align-items: center; gap: 5px; margin-left: 4px; }
+  /* Свотчи фона в две строки (5+4) — тулбар компактнее по ширине */
+  .toolbar .bg-swatches { display: grid; grid-template-columns: repeat(5, auto); gap: 3px 4px; margin-left: 4px; }
   .toolbar .bg-swatch {
-    width: 20px; height: 20px; border-radius: 50%;
+    width: 15px; height: 15px; border-radius: 50%;
     cursor: pointer; border: 1px solid rgba(255,255,255,0.2);
     transition: transform 0.1s;
   }
   .toolbar .bg-swatch:hover { transform: scale(1.2); }
+
+  .sig-overlay {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,0.72); display: none;
+    align-items: center; justify-content: center;
+  }
+  .sig-overlay.visible { display: flex; }
+  .sig-modal {
+    width: 420px; max-width: 90vw; background: #1e1e1e;
+    border: 1px solid #333; border-radius: 14px; padding: 26px;
+    font-family: 'Inter', sans-serif; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .sig-modal .sig-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .sig-modal .sig-hint { font-size: 12px; color: #999; line-height: 1.55; margin-bottom: 16px; }
+  .sig-modal .sig-input {
+    width: 100%; background: #111; border: 1px solid #444; border-radius: 8px;
+    color: #fff; font-size: 14px; padding: 11px 13px; font-family: 'JetBrains Mono', monospace;
+  }
+  .sig-modal .sig-input:focus { outline: none; border-color: #4af; }
+  .sig-modal .sig-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .sig-modal .sig-actions button {
+    background: #333; color: #ccc; border: 1px solid #555; border-radius: 8px;
+    padding: 9px 16px; font-size: 13px; cursor: pointer;
+  }
+  .sig-modal .sig-actions button:hover { background: #444; color: #fff; }
+  .sig-modal .sig-actions .sig-save { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .sig-modal .sig-actions .sig-save:hover { background: #1d4ed8; }
 
   .nav-arrow { position: fixed; top: 50%; transform: translateY(-50%); z-index: 90; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #888; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 22px; transition: all 0.15s; }
   .nav-arrow:hover { background: rgba(255,255,255,0.2); color: #fff; }
@@ -323,7 +340,9 @@
 <body>
 
 <div class="toolbar">
-  <button onclick="addTextBlock()">+ Текст</button>
+  <button onclick="addTextBlock()" title="Добавить текстовый блок">+ Текст</button>
+  <button onclick="addImageBlock()" title="Добавить блок-картинку">+ Картинка</button>
+  <button onclick="duplicateSlide()" title="Скопировать текущий слайд со всеми правками">⧉ Дубль</button>
   <span class="sep">|</span>
   <span style="color:#666;font-family:'JetBrains Mono',monospace;font-size:11px;margin-right:2px;">ФОН</span>
   <div class="bg-swatches">
@@ -339,18 +358,20 @@
   </div>
   <span class="sep">|</span>
   <span style="color:#666;font-family:'JetBrains Mono',monospace;font-size:11px;margin-right:2px;">ФОРМАТ</span>
-  <button class="fmt-btn active" data-fmt="story" onclick="setFormat('story')" title="Instagram Stories / Reels — 1080×1920">9:16 · 1920</button>
-  <button class="fmt-btn" data-fmt="post" onclick="setFormat('post')" title="Instagram пост — 1080×1350">4:5 · 1350</button>
+  <button class="fmt-btn active" data-fmt="story" onclick="setFormat('story')" title="Instagram Stories / Reels — 1080×1920">9:16</button>
+  <button class="fmt-btn" data-fmt="post" onclick="setFormat('post')" title="Instagram пост — 1080×1350">4:5</button>
   <span class="sep">|</span>
   <button id="moodboard-btn" onclick="openMoodboard()" style="display:none">🖼 Мудборд</button>
   <span class="sep" id="moodboard-sep" style="display:none">|</span>
+  <button onclick="downloadOne(current,'png')" title="Экспорт текущего слайда в PNG">↓ PNG</button>
+  <button onclick="downloadOne(current,'jpeg')" title="Экспорт текущего слайда в JPEG">↓ JPEG</button>
+  <span class="sep">|</span>
+  <button onclick="downloadAll('png')" title="Экспорт всех слайдов в PNG">⇊ Все PNG</button>
+  <button onclick="downloadAll('jpeg')" title="Экспорт всех слайдов в JPEG">⇊ Все JPEG</button>
+  <span class="sep">|</span>
   <button onclick="openSignature()" title="Подпись в футере каждой карточки">✏️ Подпись</button>
   <span class="sep">|</span>
-  <button onclick="downloadOne(current,'png')">↓ Слайд PNG</button>
-  <button onclick="downloadOne(current,'jpeg')">↓ Слайд JPEG</button>
-  <span class="sep">|</span>
-  <button onclick="downloadAll('png')">↓ Все PNG</button>
-  <button onclick="downloadAll('jpeg')">↓ Все JPEG</button>
+  <button onclick="saveDocument()" title="Записать всю вёрстку обратно в этот HTML-файл (Cmd+S)">💾 Сохранить</button>
 </div>
 
 <div class="viewport">
@@ -474,12 +495,19 @@
   <label>URL картинки</label>
   <input type="text" id="img-url-input" placeholder="images/… или https://…" />
   <input type="file" id="img-file-input" accept="image/*" style="display:none" />
-  <div>
+  <div class="btn-group">
     <button class="editor-btn" id="mb-open-btn" onclick="openMoodboard(activeImgTarget)" style="display:none">🖼 Из мудборда</button>
     <button class="editor-btn" onclick="document.getElementById('img-file-input').click()">📁 Загрузить файл</button>
     <button class="editor-btn" id="crop-btn" onclick="toggleCropMode()">✂ Обрезка</button>
     <button class="editor-btn" onclick="resetImageTransform()">↺ Сброс</button>
+    <button class="editor-btn danger" onclick="deleteActiveBlock()">✕ Удалить блок</button>
     <button class="editor-btn" onclick="closeImageEditor()">Закрыть</button>
+  </div>
+  <label style="margin-top: 14px;">Слой (наложение)</label>
+  <div class="btn-group">
+    <button class="editor-btn" onclick="moveLayer(-1)" title="Опустить блок под соседние">⬇ Ниже</button>
+    <span id="img-layer-value" style="min-width: 24px; text-align: center; color: #fff;">0</span>
+    <button class="editor-btn" onclick="moveLayer(1)" title="Поднять блок над соседними">⬆ Выше</button>
   </div>
   <div class="hint">Тяни картинку мышью — перемещение. Слайдер — масштаб. «✂ Обрезка» — тяни синие полоски по краям; обрезается только та сторона. Можно перетащить файл прямо на картинку — заменится.</div>
 </div>
@@ -505,6 +533,12 @@
     <div class="align-btn" data-align="center">☰</div>
     <div class="align-btn" data-align="right">⫸</div>
   </div>
+  <label style="margin-top: 10px;">Слой (наложение)</label>
+  <div class="size-btn-row">
+    <div class="size-btn" onclick="moveLayer(-1)" title="Опустить блок под соседние">⬇</div>
+    <div class="size-btn" id="text-layer-value" style="cursor: default;">0</div>
+    <div class="size-btn" onclick="moveLayer(1)" title="Поднять блок над соседними">⬆</div>
+  </div>
   <label style="margin-top: 12px;">Цвет текста</label>
   <div class="color-row" data-mode="text">
     <div class="color-swatch" style="background:#111111" data-color="#111111" title="Чёрный"></div>
@@ -526,6 +560,8 @@
     <div class="color-swatch" style="background:#e9d5ff" data-color="#e9d5ff" title="Лаванда"></div>
     <div class="color-swatch" style="background:#111111; color:#fff;" data-color="#111111" title="Чёрный"></div>
   </div>
+  <div class="size-btn" onclick="resetTextLayout()" style="margin-top: 14px;" title="Вернуть блок на место: убрать вертикальный сдвиг и сужение краёв">↺ Сброс положения</div>
+  <div class="size-btn danger" onclick="deleteActiveBlock()" style="margin-top: 8px;">✕ Удалить блок</div>
 </div>
 
 <!-- Moodboard popup -->
@@ -558,13 +594,30 @@
 const SCALE = 0.38;
 const NUDGE_STEP = 20;
 
-const storyIds = Array.from(document.querySelectorAll('.story')).map(s => s.id);
-const slides = document.querySelectorAll('.story-wrap');
-const totalSlides = slides.length;
+// Реестр слайдов пересобираемый: после добавления/дублирования/удаления слайда
+// вызывается refreshSlides() — она же перенумеровывает data-slide и подписи «N / M».
+let storyIds = [], slides = [], totalSlides = 0;
 let current = 0;
 
 const counterEl = document.getElementById('slide-counter');
 function updateCounter() { counterEl.textContent = (current + 1) + ' / ' + totalSlides; }
+
+function refreshSlides() {
+  slides = Array.from(document.querySelectorAll('.story-wrap'));
+  totalSlides = slides.length;
+  storyIds = slides.map(w => w.querySelector('.story').id);
+  slides.forEach((w, i) => {
+    w.dataset.slide = i;
+    const label = w.querySelector('.story-label');
+    if (label) label.textContent = (i + 1) + ' / ' + totalSlides;
+  });
+  updateCounter();
+}
+refreshSlides();
+// Активный слайд берём из разметки, а не жёстко 0 — переоткрытый сохранённый файл
+// может прийти с .active не на первом слайде.
+current = Math.max(0, slides.findIndex(w => w.classList.contains('active')));
+slides.forEach((w, i) => w.classList.toggle('active', i === current));
 updateCounter();
 
 function goTo(i) {
@@ -729,6 +782,29 @@ function applyCrop(img) {
   img.style.marginTop = (-c.t) + 'px';
 }
 
+// Числовое состояние картинок (масштаб/перенос/кроп) живёт в WeakMap и не переживает
+// ни cloneNode (дублирование слайда), ни сериализацию DOM (сохранение файла).
+// serializeImageState пишет его в data-атрибуты img, rehydrateImageState читает обратно.
+function serializeImageState(root) {
+  (root || document).querySelectorAll('.story-image-block img').forEach(img => {
+    img.dataset.imgTransform = JSON.stringify(getImageTransform(img));
+    img.dataset.wrapTransform = JSON.stringify(getWrapTransform(img));
+    img.dataset.crop = JSON.stringify(getCrop(img));
+  });
+}
+function rehydrateImageState(root) {
+  (root || document).querySelectorAll('.story-image-block img').forEach(img => {
+    let had = false;
+    try {
+      if (img.dataset.imgTransform) { imageTransforms.set(img, JSON.parse(img.dataset.imgTransform)); had = true; }
+      if (img.dataset.wrapTransform) { wrapTransforms.set(img, JSON.parse(img.dataset.wrapTransform)); had = true; }
+      if (img.dataset.crop) { imageCrops.set(img, JSON.parse(img.dataset.crop)); had = true; }
+    } catch (e) { console.warn('rehydrate image state failed', e); }
+    if (had) { applyImageTransform(img); applyCrop(img); }
+  });
+}
+rehydrateImageState();
+
 function resetCrop(img) {
   const c = getCrop(img);
   c.t = c.r = c.b = c.l = 0; c.w = 0; c.h = 0;
@@ -825,6 +901,7 @@ function openImageEditor(img) {
   closeSizeEditor();
   activeImgTarget = img;
   syncScaleUI(img);
+  syncLayerUI(img.closest('.block'));
   imgUrlInput.value = img.getAttribute('src') || '';
   const rect = img.getBoundingClientRect();
   let left = rect.right + 12, top = rect.top;
@@ -1065,7 +1142,11 @@ document.addEventListener('pointerdown', (e) => {
     // Зоны захвата — 12px в координатах слайда; слайд отмасштабирован (SCALE),
     // и у коротких блоков зоны не должны съедать всю высоту (иначе клик не фокусирует текст)
     const edge = Math.min(12 * SCALE, rect.height / 4);
-    if (localY > edge && localY < rect.height - edge) return;
+    if (localY > edge && localY < rect.height - edge) {
+      // Не вертикальная зона — может быть левая/правая кромка текста (углы отданы вертикали)
+      startTextResize(e);
+      return;
+    }
     block = candidate;
   }
   dragState = { block, startY: e.clientY, startTranslateY: getTranslateY(block) };
@@ -1078,6 +1159,83 @@ document.addEventListener('pointermove', (e) => {
   setTranslateY(dragState.block, dragState.startTranslateY + (e.clientY - dragState.startY) / SCALE);
 });
 document.addEventListener('pointerup', () => { if (!dragState) return; dragState.block.classList.remove('dragging'); dragState = null; });
+
+// ===== Горизонтальный ресайз текстовых блоков =====
+// Тянем левую/правую кромку payload'а — меняются inline margin-left/right на нём
+// (не на .block): текст переносится по словам тем же кеглем, translateY блока и
+// .block-controls не затронуты, а margin'ы бесплатно переживают дублирование
+// слайда и сохранение файла. Зоны меряются по rect самого payload'а — после
+// сужения кромка следует за текстом, а не за пустым краем блока.
+const TEXT_PAYLOAD_SELECTOR = '.story-title, .story-kicker, .story-text, .story-text-sm, .story-quote, .story-bullets';
+const TEXT_MIN_WIDTH = 160; // слайдовых px — уже не сжимаем
+let hResizeState = null;
+
+function startTextResize(e) {
+  const payload = e.target.closest(TEXT_PAYLOAD_SELECTOR);
+  if (!payload) return;
+  const rect = payload.getBoundingClientRect();
+  const hEdge = Math.min(12 * SCALE, rect.width / 4);
+  const localX = e.clientX - rect.left;
+  const side = localX <= hEdge ? 'left' : (localX >= rect.width - hEdge ? 'right' : null);
+  if (!side) return; // середина — обычный клик, фокус и каретка
+  const ml = parseFloat(payload.style.marginLeft) || 0;
+  const mr = parseFloat(payload.style.marginRight) || 0;
+  hResizeState = { payload, side, startX: e.clientX, startMl: ml, startMr: mr,
+                   fullW: rect.width / SCALE + ml + mr };
+  payload.classList.add('h-resizing');
+  e.preventDefault();
+}
+document.addEventListener('pointermove', (e) => {
+  if (!hResizeState) return;
+  const { payload, side, startX, startMl, startMr, fullW } = hResizeState;
+  const dx = (e.clientX - startX) / SCALE;
+  // margin ≥ 0 (за паддинг слайда не вылезаем), суммарно ≤ fullW − минимальная ширина
+  const maxSum = Math.max(0, fullW - TEXT_MIN_WIDTH);
+  if (side === 'left') {
+    payload.style.marginLeft = cropClamp(startMl + dx, 0, maxSum - startMr) + 'px';
+  } else {
+    payload.style.marginRight = cropClamp(startMr - dx, 0, maxSum - startMl) + 'px';
+  }
+  e.preventDefault();
+});
+document.addEventListener('pointerup', () => {
+  if (!hResizeState) return;
+  hResizeState.payload.classList.remove('h-resizing');
+  hResizeState = null;
+});
+
+// Сброс расположения текстового блока: вертикальный сдвиг блока + сужение краёв
+function resetTextLayout() {
+  if (!activeSizeTarget) return;
+  const block = activeSizeTarget.closest('.block');
+  if (block) block.style.transform = '';
+  activeSizeTarget.style.marginLeft = '';
+  activeSizeTarget.style.marginRight = '';
+  showToast('Положение и ширина блока сброшены');
+}
+
+// ===== Слои: порядок наложения перекрывающихся блоков =====
+// Инлайновый z-index на .block (блоки position:relative, z-index работает);
+// как обычный inline-стиль он бесплатно переживает дубль слайда и сохранение.
+function activeBlock() {
+  return (activeImgTarget && activeImgTarget.closest('.block'))
+      || (activeSizeTarget && activeSizeTarget.closest('.block'));
+}
+function getLayer(block) { return parseInt(block.style.zIndex, 10) || 0; }
+function syncLayerUI(block) {
+  const z = block ? getLayer(block) : 0;
+  document.getElementById('img-layer-value').textContent = z;
+  document.getElementById('text-layer-value').textContent = z;
+}
+function moveLayer(dir) {
+  const block = activeBlock();
+  if (!block) return;
+  // Отрицательный слой уходит под соседние блоки, но не под фон слайда:
+  // .story с transform+position — stacking context
+  const z = Math.max(-5, Math.min(20, getLayer(block) + dir));
+  block.style.zIndex = z || ''; // слой 0 = чистим inline-стиль, разметка не засоряется
+  syncLayerUI(block);
+}
 
 // html2canvas плохо рендерит transform-масштаб обёртки вместе с overflow:hidden,
 // поэтому при экспорте «запекаем» визуальную геометрию картинок в абсолютные
@@ -1184,6 +1342,7 @@ function updateFontPx() {
 function openSizeEditor(textEl) {
   activeSizeTarget = textEl;
   updateFontPx();
+  syncLayerUI(textEl.closest('.block'));
   const cur = getTextSize(textEl);
   sizeBtns.forEach(btn => btn.classList.toggle('active', +btn.dataset.size === cur));
   const curAlign = textEl.style.textAlign || 'left';
@@ -1241,6 +1400,7 @@ FONTS.forEach(f => {
   const btn = document.createElement('div');
   btn.className = 'font-btn';
   btn.textContent = f.label;
+  btn.title = f.label; // сетка 2×4 узкая — длинные имена уходят в ellipsis
   btn.dataset.family = f.family;
   btn.style.fontFamily = f.family || "'Inter', sans-serif";
   btn.addEventListener('click', () => {
@@ -1335,16 +1495,15 @@ document.querySelectorAll('.text-size-editor .color-row').forEach(row => {
   });
 });
 
+const BLOCK_CONTROLS_HTML = '<div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>';
+
 function addTextBlock() {
   const activeSlide = slides[current].querySelector('.story');
   if (!activeSlide) return;
   const footer = activeSlide.querySelector('.story-footer');
   const block = document.createElement('div');
   block.className = 'block';
-  block.innerHTML = `
-    <div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>
-    <div class="story-text" contenteditable="true">текст…</div>
-  `;
+  block.innerHTML = BLOCK_CONTROLS_HTML + '<div class="story-text" contenteditable="true">текст…</div>';
   if (footer) { activeSlide.insertBefore(block, footer); }
   else { activeSlide.appendChild(block); }
   const textEl = block.querySelector('.story-text');
@@ -1352,6 +1511,176 @@ function addTextBlock() {
   textEl.focus();
 }
 
+// Плейсхолдер новой картинки — inline SVG как data URL, а не файл:
+// работает в любой папке поста, экспортируется html2canvas и переживает сохранение.
+const PLACEHOLDER_SRC = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" width="1080" height="1080">' +
+  '<rect width="1080" height="1080" fill="#d4d4d4"/>' +
+  '<g fill="#888" font-family="-apple-system, Inter, sans-serif" text-anchor="middle">' +
+  '<text x="540" y="520" font-size="56" font-weight="700" letter-spacing="6">ИЗОБРАЖЕНИЕ</text>' +
+  '<text x="540" y="600" font-size="28" letter-spacing="3" fill="#999">КЛИКНИ — ВСТАВЬ URL</text>' +
+  '</g>' +
+  '<rect x="40" y="40" width="1000" height="1000" fill="none" stroke="#aaa" stroke-width="2" stroke-dasharray="14 10"/>' +
+  '</svg>'
+);
+
+function addImageBlock() {
+  const activeSlide = slides[current].querySelector('.story');
+  if (!activeSlide) return;
+  const footer = activeSlide.querySelector('.story-footer');
+  const block = document.createElement('div');
+  block.className = 'block';
+  block.innerHTML = BLOCK_CONTROLS_HTML + '<div class="story-image-block small"></div>';
+  const img = document.createElement('img');
+  img.alt = '';
+  img.src = PLACEHOLDER_SRC;
+  block.querySelector('.story-image-block').appendChild(img);
+  if (footer) { activeSlide.insertBefore(block, footer); }
+  else { activeSlide.appendChild(block); }
+  ensureCropWrap(img);
+  attachImageDropHandlers(img);
+  openImageEditor(img);
+}
+
+// ===== Удаление блоков =====
+// Кнопка «✕ Удалить блок» живёт в панелях картинки и текста: удаляется тот блок,
+// чья панель сейчас открыта (клик по картинке / фокус в тексте).
+function deleteActiveBlock() {
+  const target = (activeImgTarget && activeImgTarget.closest('.block'))
+              || (activeSizeTarget && activeSizeTarget.closest('.block'));
+  if (!target) return;
+  closeImageEditor();
+  closeSizeEditor();
+  target.remove();
+  showToast('Блок удалён');
+}
+
+// ===== Сохранение вёрстки в HTML-файл =====
+// «💾 Сохранить» пишет текущее состояние (тексты, картинки-data-URL, позиции, кропы,
+// шрифты, цвета, фоны) обратно в открытый файл через POST /save (server.py делает
+// бэкап *.backup.html и атомарную замену). Если сервера нет или он старый (без
+// do_POST → 501) — фолбэк: файл скачивается браузером.
+function buildSaveHTML() {
+  closeImageEditor(); // внутри выходит и из кроп-режима
+  closeSizeEditor();
+  closeMoodboard();
+  document.querySelectorAll('[contenteditable]').forEach(el => el.blur());
+  serializeImageState(); // WeakMap-состояние картинок → data-атрибуты
+
+  const clone = document.documentElement.cloneNode(true);
+  clone.querySelectorAll('.crop-handle').forEach(h => h.remove());
+  clone.querySelectorAll('.cropping, .dragging, .drop-target, .h-resizing').forEach(el =>
+    el.classList.remove('cropping', 'dragging', 'drop-target', 'h-resizing'));
+  clone.querySelectorAll('.image-editor, .text-size-editor, .moodboard-overlay, .sig-overlay, .toast').forEach(el =>
+    el.classList.remove('visible'));
+  // Эти два контейнера заполняются скриптом при каждой загрузке — в файле они
+  // должны быть пустыми, иначе после переоткрытия кнопки шрифтов и секции
+  // мудборда задублируются.
+  const fontRowClone = clone.querySelector('#font-row');
+  if (fontRowClone) fontRowClone.innerHTML = '';
+  const mbClone = clone.querySelector('#moodboard-content');
+  if (mbClone) mbClone.innerHTML = '';
+  // Видимость мудборд-кнопок решает renderMoodboard при загрузке — в файл пишем скрытыми
+  clone.querySelectorAll('#moodboard-btn, #moodboard-sep, #mb-open-btn').forEach(el =>
+    el.style.display = 'none');
+  return '<!DOCTYPE html>\n' + clone.outerHTML;
+}
+
+async function saveDocument() {
+  const html = buildSaveHTML();
+  const name = decodeURIComponent(location.pathname.split('/').pop() || '') || 'stories.html';
+  try {
+    if (!/^https?:$/.test(location.protocol)) throw new Error('открыто не через сервер (' + location.protocol + ')');
+    const resp = await fetch('/save?name=' + encodeURIComponent(name), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      body: html
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    showToast('💾 Сохранено в ' + name + ' — прежняя версия в ' + name.replace(/\.html$/, '.backup.html'));
+  } catch (e) {
+    console.warn('POST /save не прошёл, скачиваю файл', e);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('⚠ Сервер не принял сохранение — файл скачан. Обнови server.py в папке поста или замени файл вручную');
+  }
+}
+
+// Cmd/Ctrl+S должен работать и посреди редактирования текста, поэтому отдельный
+// listener (общий keydown-навигатор игнорирует события из contenteditable).
+// e.code, а не e.key — чтобы хоткей работал и на русской раскладке (ы).
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.code === 'KeyS') {
+    e.preventDefault();
+    saveDocument();
+  }
+});
+
+// ===== Дублирование слайда =====
+// cloneNode(true) бесплатно уносит inline-стили (translateY блоков, цвета, фон),
+// data-URL картинок и шрифты. Не уносит две вещи: слушатели событий (перевешиваем
+// attachImageDropHandlers/wireTextPanel) и WeakMap-состояние картинок — его
+// переносим циклом serializeImageState → clone → rehydrateImageState (Фаза 0).
+function duplicateSlide() {
+  const srcWrap = slides[current];
+  if (!srcWrap) return;
+  closeImageEditor(); // внутри выходит и из кроп-режима
+  closeSizeEditor();
+  if (document.activeElement && document.activeElement.isContentEditable) document.activeElement.blur();
+
+  serializeImageState(srcWrap);
+  const clone = srcWrap.cloneNode(true);
+  clone.classList.remove('active');
+  clone.querySelectorAll('.crop-handle').forEach(h => h.remove());
+  clone.querySelectorAll('.cropping, .dragging, .drop-target, .h-resizing').forEach(el =>
+    el.classList.remove('cropping', 'dragging', 'drop-target', 'h-resizing'));
+
+  // Уникальный id холста: max существующего N + 1 (id не перенумеровываются при
+  // удалении, поэтому max, а не count)
+  const maxN = Math.max(0, ...Array.from(document.querySelectorAll('.story'))
+    .map(s => parseInt((s.id.match(/^story-(\d+)$/) || [])[1], 10) || 0));
+  clone.querySelector('.story').id = 'story-' + (maxN + 1);
+
+  srcWrap.after(clone);
+  clone.querySelectorAll('.story-image-block img').forEach(img => {
+    ensureCropWrap(img); // no-op: обёртка уже склонирована, но пусть страхует
+    attachImageDropHandlers(img);
+  });
+  rehydrateImageState(clone);
+  clone.querySelectorAll('.story-text, .story-text-sm, .story-quote, .story-title, .story-kicker, .story-bullets').forEach(wireTextPanel);
+
+  refreshSlides();
+  goTo(current + 1);
+  showToast('Слайд продублирован');
+}
+
+async function downloadOne(index, format) {
+  try {
+    const prev = current; goTo(index);
+    await new Promise(r => setTimeout(r, 100));
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    const data = await captureStory(storyIds[index], format);
+    dl(data, `story-${String(index + 1).padStart(2,'0')}.${ext}`);
+    goTo(prev);
+  } catch(e) { console.error(e); alert('Запусти локальный сервер:\npython3 server.py 8089'); }
+}
+async function downloadAll(format) {
+  try {
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    const prev = current;
+    for (let i = 0; i < storyIds.length; i++) {
+      goTo(i); await new Promise(r => setTimeout(r, 150));
+      const data = await captureStory(storyIds[i], format);
+      dl(data, `story-${String(i + 1).padStart(2,'0')}.${ext}`);
+      await new Promise(r => setTimeout(r, 200));
+    }
+    goTo(prev);
+  } catch(e) { console.error(e); alert('Запусти локальный сервер:\npython3 server.py 8089'); }
+}
 // ── Подпись в футере ──────────────────────────────────────────────
 // Ключ хранится в localStorage. При первом открытии редактор спрашивает
 // адрес блога / имя; если пользователь выбрал «Без подписи» — сохраняется
@@ -1383,30 +1712,6 @@ document.getElementById('sig-input').addEventListener('keydown', (e) => {
   if (stored === null) { openSignature(); }   // ни разу не спрашивали — спросить
   else { applySignature(stored); }             // уже есть значение (в т.ч. пустое) — применить
 })();
-
-async function downloadOne(index, format) {
-  try {
-    const prev = current; goTo(index);
-    await new Promise(r => setTimeout(r, 100));
-    const ext = format === 'jpeg' ? 'jpg' : 'png';
-    const data = await captureStory(storyIds[index], format);
-    dl(data, `story-${String(index + 1).padStart(2,'0')}.${ext}`);
-    goTo(prev);
-  } catch(e) { console.error(e); alert('Запусти локальный сервер:\npython3 server.py 8089'); }
-}
-async function downloadAll(format) {
-  try {
-    const ext = format === 'jpeg' ? 'jpg' : 'png';
-    const prev = current;
-    for (let i = 0; i < storyIds.length; i++) {
-      goTo(i); await new Promise(r => setTimeout(r, 150));
-      const data = await captureStory(storyIds[i], format);
-      dl(data, `story-${String(i + 1).padStart(2,'0')}.${ext}`);
-      await new Promise(r => setTimeout(r, 200));
-    }
-    goTo(prev);
-  } catch(e) { console.error(e); alert('Запусти локальный сервер:\npython3 server.py 8089'); }
-}
 </script>
 </body>
 </html>
