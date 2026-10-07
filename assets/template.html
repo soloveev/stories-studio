@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Stories</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Unbounded:wght@400;700;900&family=Russo+One&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Golos+Text:wght@400;700;900&family=Manrope:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=JetBrains+Mono:wght@400;700&family=Unbounded:wght@400;700;900&family=Russo+One&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Lora:ital,wght@0,400;0,700;1,400;1,700&family=Golos+Text:wght@400;700;900&family=Manrope:wght@400;700;800&family=Geologica:wght@400;600;700;800&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -43,7 +43,7 @@
   .story-white { background: #fff; }
   .story-gray  { background: #ededed; }
   .story-black { background: #111; color: #fff; }
-  .story-black .story-text, .story-black .story-quote, .story-black .story-title, .story-black .story-subtitle, .story-black .story-footer, .story-black .story-kicker { color: #fff; }
+  .story-black .story-text, .story-black .story-text-sm, .story-black .story-quote, .story-black .story-title, .story-black .story-subtitle, .story-black .story-footer, .story-black .story-kicker { color: #fff; }
   .story-black .story-kicker { color: #bbb; }
 
   /* Image block on every slide — base size; can be scaled/translated freely */
@@ -74,6 +74,10 @@
      clip-path не используется — html2canvas 1.4.1 игнорирует его при экспорте. */
   .img-crop { position: relative; max-width: 100%; }
   .img-crop.cropping { outline: 2px dashed rgba(0,120,255,0.8); outline-offset: 2px; }
+  /* Форма картинки (ряд «Форма» в панели): атрибут на обёртке переживает дубль, сохранение и экспорт.
+     Круг = скругление 50 % квадратного окна; неквадратное окно setImageShape сама дообрезает по центру. */
+  .img-crop[data-shape="rounded"] { border-radius: 36px; overflow: hidden; }
+  .img-crop[data-shape="circle"]  { border-radius: 50%;  overflow: hidden; }
   .crop-handle { position: absolute; z-index: 20; background: rgba(0,120,255,0.30); transition: background 0.15s; touch-action: none; }
   .crop-handle:hover, .crop-handle.dragging { background: rgba(0,120,255,0.65); }
   .crop-handle[data-side="top"], .crop-handle[data-side="bottom"] { left: 0; right: 0; height: 40px; cursor: ns-resize; }
@@ -109,6 +113,7 @@
     font-size: 12px; cursor: pointer; border-radius: 4px;
   }
   .image-editor .editor-btn:hover { background: #444; color: #fff; }
+  .image-editor .shape-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
   /* Кнопки панели: одинаковый зазор по горизонтали и вертикали при переносе */
   .image-editor .btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .image-editor .hint {
@@ -201,6 +206,10 @@
     font-size: 34px; line-height: 1.42; color: #1a1a1a;
   }
   .story-text-sm b, .story-text-sm strong { font-weight: 700; color: inherit; }
+  /* Толстое зачёркивание, которое переживает экспорт: html2canvas игнорирует text-decoration-thickness.
+     Каждую строку — в свой .strike-bar (через <br>), иначе на переносе полоса ляжет одним прямоугольником. */
+  .strike-bar { position: relative; display: inline-block; }
+  .strike-bar::after { content: ''; position: absolute; left: 0; right: 0; top: 54%; height: 0.085em; background: var(--strike, #ff5a36); }
   .story-text-sm + .story-text-sm { margin-top: 22px; }
 
   .story-bullets {
@@ -295,6 +304,10 @@
     transition: transform 0.1s, border-color 0.1s;
   }
   .color-swatch:hover { transform: scale(1.12); border-color: rgba(255,255,255,0.5); }
+  /* Свой цвет: нативная пипетка под круглым свотчем-радугой */
+  .color-pick { position: relative; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.35); background: conic-gradient(#f44, #fd4, #4d6, #4cf, #64f, #f4d, #f44); }
+  .color-pick input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; border: 0; padding: 0; }
   /* Свотчи фона в две строки (5+4) — тулбар компактнее по ширине */
   .toolbar .bg-swatches { display: grid; grid-template-columns: repeat(5, auto); gap: 3px 4px; margin-left: 4px; }
   .toolbar .bg-swatch {
@@ -503,6 +516,12 @@
     <button class="editor-btn danger" onclick="deleteActiveBlock()">✕ Удалить блок</button>
     <button class="editor-btn" onclick="closeImageEditor()">Закрыть</button>
   </div>
+  <label style="margin-top: 14px;">Форма</label>
+  <div class="btn-group" id="shape-row">
+    <button class="editor-btn shape-btn" data-shape="none" onclick="setImageShape('none')" title="Прямоугольник как есть">▭ Как есть</button>
+    <button class="editor-btn shape-btn" data-shape="rounded" onclick="setImageShape('rounded')" title="Скруглённые углы">▢ Скругл.</button>
+    <button class="editor-btn shape-btn" data-shape="circle" onclick="setImageShape('circle')" title="Круг: неквадратную картинку дообрежет до квадрата по центру">◯ Круг</button>
+  </div>
   <label style="margin-top: 14px;">Слой (наложение)</label>
   <div class="btn-group">
     <button class="editor-btn" onclick="moveLayer(-1)" title="Опустить блок под соседние">⬇ Ниже</button>
@@ -548,8 +567,9 @@
     <div class="color-swatch" style="background:#1d4ed8" data-color="#1d4ed8" title="Синий"></div>
     <div class="color-swatch" style="background:#16a34a" data-color="#16a34a" title="Зелёный"></div>
     <div class="color-swatch" style="background:#7c3aed" data-color="#7c3aed" title="Фиолетовый"></div>
+    <label class="color-pick" title="Свой цвет"><input type="color"></label>
   </div>
-  <label style="margin-top: 10px;">Подсветка (маркер)</label>
+  <label style="margin-top: 10px;">Подсветка / фон плашки</label>
   <div class="color-row" data-mode="highlight">
     <div class="color-swatch" style="background:transparent; color:#888;" data-color="transparent" title="Без подсветки">✕</div>
     <div class="color-swatch" style="background:#ffffff; border-color:#444;" data-color="#ffffff" title="Белый"></div>
@@ -559,6 +579,7 @@
     <div class="color-swatch" style="background:#bbf7d0" data-color="#bbf7d0" title="Мята"></div>
     <div class="color-swatch" style="background:#e9d5ff" data-color="#e9d5ff" title="Лаванда"></div>
     <div class="color-swatch" style="background:#111111; color:#fff;" data-color="#111111" title="Чёрный"></div>
+    <label class="color-pick" title="Свой цвет"><input type="color"></label>
   </div>
   <div class="size-btn" onclick="resetTextLayout()" style="margin-top: 14px;" title="Вернуть блок на место: убрать вертикальный сдвиг и сужение краёв">↺ Сброс положения</div>
   <div class="size-btn danger" onclick="deleteActiveBlock()" style="margin-top: 8px;">✕ Удалить блок</div>
@@ -897,10 +918,36 @@ function syncScaleUI(img) {
   imgScaleValue.textContent = Math.round(scale * 100) + '%';
 }
 
+// Форма картинки: атрибут data-shape на обёртке .img-crop (CSS даёт скругление + overflow).
+// Для круга окно должно быть квадратным — неквадратное дообрезаем по центру длинной стороны.
+function setImageShape(shape) {
+  const img = activeImgTarget;
+  if (!img) return;
+  const wrap = ensureCropWrap(img);
+  if (shape === 'circle') {
+    const c = getCrop(img);
+    if (!c.w) { c.w = img.offsetWidth; c.h = img.offsetHeight; }
+    const vw = c.w - c.l - c.r, vh = c.h - c.t - c.b;
+    if (Math.abs(vw - vh) > 1) {
+      if (vw > vh) { const d = (vw - vh) / 2; c.l += d; c.r += d; }
+      else { const d = (vh - vw) / 2; c.t += d; c.b += d; }
+      applyCrop(img);
+    }
+  }
+  if (shape === 'none') delete wrap.dataset.shape; else wrap.dataset.shape = shape;
+  syncShapeUI(img);
+}
+function syncShapeUI(img) {
+  const wrap = img && getCropWrap(img);
+  const cur = (wrap && wrap.dataset.shape) || 'none';
+  document.querySelectorAll('#shape-row .shape-btn').forEach(b => b.classList.toggle('active', b.dataset.shape === cur));
+}
+
 function openImageEditor(img) {
   closeSizeEditor();
   activeImgTarget = img;
   syncScaleUI(img);
+  syncShapeUI(img);
   syncLayerUI(img.closest('.block'));
   imgUrlInput.value = img.getAttribute('src') || '';
   const rect = img.getBoundingClientRect();
@@ -1254,14 +1301,18 @@ function bakeImageGeometry(origStory, cloneStory) {
     const bRect = oblock.getBoundingClientRect();
     const wRect = owrap.getBoundingClientRect();
     const iRect = oimg.getBoundingClientRect();
-    // Обёртка выпадает из потока — фиксируем высоту блока, чтобы соседи не съехали
+    // Обёртка выпадает из потока — фиксируем высоту и ширину блока, чтобы соседи не съехали
+    // (ширину — для строчных раскладок: блок с width:auto рядом с текстом иначе схлопнется в 0)
     cblock.style.height = oblock.offsetHeight + 'px';
+    cblock.style.width = oblock.offsetWidth + 'px';
     cwrap.style.position = 'absolute';
     cwrap.style.left = ((wRect.left - bRect.left) / SCALE) + 'px';
     cwrap.style.top = ((wRect.top - bRect.top) / SCALE) + 'px';
     cwrap.style.width = (wRect.width / SCALE) + 'px';
     cwrap.style.height = (wRect.height / SCALE) + 'px';
     cwrap.style.margin = '0';
+    // max-width:100% из CSS обрезал бы запечённую ширину растянутой картинки до ширины блока (07.10.2026)
+    cwrap.style.maxWidth = 'none';
     cwrap.style.transform = 'none';
     cimg.style.position = 'absolute';
     cimg.style.left = ((iRect.left - wRect.left) / SCALE) + 'px';
@@ -1292,7 +1343,10 @@ async function captureStory(id, format) {
   document.body.appendChild(clone);
   clone.style.height = currentFormat.h + 'px';
   await new Promise(r => setTimeout(r, 100));
-  const canvas = await html2canvas(clone, { scale: 1, width: currentFormat.w, height: currentFormat.h, useCORS: true, backgroundColor: null });
+  // onclone: дождаться загрузки веб-шрифтов в клоне — иначе html2canvas рисует фолбэком по метрикам
+  // настоящего шрифта, и буквы разъезжаются (замечено на Unbounded 18.09.2026)
+  const canvas = await html2canvas(clone, { scale: 1, width: currentFormat.w, height: currentFormat.h, useCORS: true, backgroundColor: null,
+    onclone: (doc) => (doc.fonts && doc.fonts.ready) ? doc.fonts.ready.then(() => new Promise(r => setTimeout(r, 150))) : null });
   document.body.removeChild(clone);
   const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
   return canvas.toDataURL(mime, format === 'jpeg' ? 0.95 : undefined);
@@ -1392,6 +1446,8 @@ const FONTS = [
   { label: 'Golos Text', family: "'Golos Text', sans-serif" },
   { label: 'Manrope', family: "'Manrope', sans-serif" },
   { label: 'JetBrains Mono', family: "'JetBrains Mono', monospace" },
+  { label: 'Geologica', family: "'Geologica', sans-serif" },
+  { label: 'Onest', family: "'Onest', sans-serif" },
 ];
 const fontRow = document.getElementById('font-row');
 // Первое имя семейства без кавычек — для сравнения style.fontFamily с data-family
@@ -1457,6 +1513,34 @@ document.querySelectorAll('.bg-swatch').forEach(sw => {
 });
 
 // ===== Text color / highlight swatches (work on current selection) =====
+// Окраска из панели текста: есть выделение внутри блока — красим его, нет — весь блок
+// (режим highlight без выделения = фон всего блока, то есть цвет плашки)
+function applyPanelColor(mode, color, range) {
+  if (!activeSizeTarget) return;
+  const sel = window.getSelection();
+  if (range) { activeSizeTarget.focus(); sel.removeAllRanges(); sel.addRange(range); }
+  const hasSelection = sel && sel.rangeCount && !sel.isCollapsed
+    && activeSizeTarget.contains(sel.anchorNode) && activeSizeTarget.contains(sel.focusNode);
+  if (hasSelection) {
+    activeSizeTarget.focus();
+    try { document.execCommand('styleWithCSS', false, true); } catch {}
+    if (mode === 'text') {
+      document.execCommand('foreColor', false, color);
+    } else {
+      // Highlight: Chrome/Safari hiliteColor, Firefox uses backColor
+      const cmd = (document.queryCommandSupported && document.queryCommandSupported('hiliteColor')) ? 'hiliteColor' : 'backColor';
+      document.execCommand(cmd, false, color);
+    }
+  } else if (mode === 'text') {
+    activeSizeTarget.style.color = color === 'transparent' ? '' : color;
+  } else if (color === 'transparent') {
+    activeSizeTarget.style.background = '';
+    activeSizeTarget.querySelectorAll('span, font, b, i').forEach(n => { n.style.backgroundColor = ''; });
+  } else {
+    activeSizeTarget.style.background = color;
+  }
+}
+
 document.querySelectorAll('.text-size-editor .color-row').forEach(row => {
   const mode = row.dataset.mode;
   row.querySelectorAll('.color-swatch').forEach(sw => {
@@ -1464,35 +1548,20 @@ document.querySelectorAll('.text-size-editor .color-row').forEach(row => {
     sw.addEventListener('mousedown', (e) => { e.preventDefault(); });
     sw.addEventListener('click', (e) => {
       e.preventDefault();
-      if (!activeSizeTarget) return;
-      const color = sw.dataset.color;
-      const sel = window.getSelection();
-      const hasSelection = sel && sel.rangeCount && !sel.isCollapsed
-        && activeSizeTarget.contains(sel.anchorNode) && activeSizeTarget.contains(sel.focusNode);
-      if (hasSelection) {
-        // Есть выделение — красим только его
-        activeSizeTarget.focus();
-        try { document.execCommand('styleWithCSS', false, true); } catch {}
-        if (mode === 'text') {
-          document.execCommand('foreColor', false, color);
-        } else {
-          // Highlight: Chrome/Safari hiliteColor, Firefox uses backColor
-          const cmd = (document.queryCommandSupported && document.queryCommandSupported('hiliteColor')) ? 'hiliteColor' : 'backColor';
-          document.execCommand(cmd, false, color);
-        }
-      } else {
-        // Выделения нет — красим весь текстовый блок
-        if (mode === 'text') {
-          activeSizeTarget.style.color = color === 'transparent' ? '' : color;
-        } else if (color === 'transparent') {
-          activeSizeTarget.style.background = '';
-          activeSizeTarget.querySelectorAll('span, font, b, i').forEach(n => { n.style.backgroundColor = ''; });
-        } else {
-          activeSizeTarget.style.background = color;
-        }
-      }
+      applyPanelColor(mode, sw.dataset.color);
     });
   });
+  // Пипетка забирает фокус — выделение запоминаем до открытия и возвращаем при каждом выборе
+  const pick = row.querySelector('.color-pick input');
+  if (pick) {
+    let saved = null;
+    pick.addEventListener('mousedown', () => {
+      const sel = window.getSelection();
+      saved = (activeSizeTarget && sel.rangeCount && !sel.isCollapsed && activeSizeTarget.contains(sel.anchorNode))
+        ? sel.getRangeAt(0).cloneRange() : null;
+    });
+    pick.addEventListener('input', () => applyPanelColor(mode, pick.value, saved));
+  }
 });
 
 const BLOCK_CONTROLS_HTML = '<div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>';
