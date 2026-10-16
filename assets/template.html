@@ -29,7 +29,7 @@
   .viewport { display: flex; align-items: center; justify-content: center; height: 100vh; padding-top: 44px; }
   .story-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; position: absolute; visibility: hidden; pointer-events: none; }
   .story-wrap.active { visibility: visible; pointer-events: auto; }
-  .story-label { color: #666; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .story-label { color: #999; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
   .story {
     width: 1080px; height: 1920px; overflow: hidden;
     display: flex; flex-direction: column;
@@ -40,6 +40,8 @@
   }
   /* Формат «пост» 1080×1350 (4:5); margin-bottom = -height × (1 − scale) */
   body.fmt-post .story { height: 1350px; margin-bottom: -837px; }
+  /* Формат «обложка» 1920×1080 (16:9): горизонтальная обложка поста, блога, YouTube */
+  body.fmt-wide .story { width: 1920px; height: 1080px; margin-bottom: -670px; }
   .story-white { background: #fff; }
   .story-gray  { background: #ededed; }
   .story-black { background: #111; color: #fff; }
@@ -72,12 +74,44 @@
 
   /* Обрезка картинки: обёртка-окно. overflow:hidden ставится инлайном только при активном кропе;
      clip-path не используется — html2canvas 1.4.1 игнорирует его при экспорте. */
-  .img-crop { position: relative; max-width: 100%; }
+  /* z-index: 0 — свой контекст наложения: слои растяжки .img-fade (z-index 2) не всплывают над соседними блоками текста */
+  .img-crop { position: relative; z-index: 0; max-width: 100%; }
   .img-crop.cropping { outline: 2px dashed rgba(0,120,255,0.8); outline-offset: 2px; }
   /* Форма картинки (ряд «Форма» в панели): атрибут на обёртке переживает дубль, сохранение и экспорт.
      Круг = скругление 50 % квадратного окна; неквадратное окно setImageShape сама дообрезает по центру. */
   .img-crop[data-shape="rounded"] { border-radius: 36px; overflow: hidden; }
   .img-crop[data-shape="circle"]  { border-radius: 50%;  overflow: hidden; }
+  /* Растяжка картинки в цвет фона (ряд «Растяжка» в панели): данные — data-fade (JSON) на обёртке .img-crop,
+     слои .img-fade внутри неё пересоздаёт applyFade. Двигаются и масштабируются вместе с картинкой. */
+  .img-fade { position: absolute; pointer-events: none; z-index: 2; }
+
+  /* Стили выделения текста (ряд «Стиль выделения» в панели текста): span.hl.hl-<стиль>, цвет — --hl.
+     Рукописные (circle/scribble/pencil) рисуются SVG-фоном под реальный размер, его пересчитывает refreshHandDrawn.
+     В экспорте многострочное выделение режется по строкам (splitHighlightsByLine) — иначе html2canvas
+     нарисует одну плашку поверх соседних слов. */
+  .hl { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .hl-fill   { background: var(--hl); }
+  .hl-round  { background: var(--hl); border-radius: 0.28em; padding: 0.02em 0.2em 0.06em; }
+  .hl-marker { background: linear-gradient(transparent 50%, var(--hl) 50%, var(--hl) 92%, transparent 92%); padding: 0 0.06em; }
+  .hl-under  { background: linear-gradient(var(--hl), var(--hl)) left bottom / 100% 0.12em no-repeat; padding-bottom: 0.03em; }
+  .hl-pill   { border: 0.07em solid var(--hl); border-radius: 1em; padding: 0 0.32em; }
+  .hl-strike { position: relative; }
+  .hl-strike::after { content: ''; position: absolute; left: -0.04em; right: -0.04em; top: 54%; height: 0.085em; background: var(--hl); }
+  /* обвод держит фразу одной строкой: на переносе получилось бы два овала */
+  .hl-circle { background-repeat: no-repeat; background-size: 100% 100%; padding: 0.16em 0.34em; margin: 0 -0.34em; white-space: nowrap; }
+  .hl-scribble, .hl-pencil { background-repeat: no-repeat; background-position: left bottom; padding-bottom: 0.08em; }
+  .hl-scribble { background-size: 100% 0.42em; }
+  .hl-pencil   { background-size: 100% 0.3em; }
+
+  /* Направляющие (⌗ Поля в тулбаре): поля 64px, граница низа над футером. В экспорт и в файл не попадают. */
+  .guides { position: absolute; inset: 0; pointer-events: none; z-index: 50; display: none; }
+  body.guides-on .guides { display: block; }
+  .guides i { position: absolute; background: rgba(255, 0, 140, 0.55); }
+  .guides .g-l { left: 64px; top: 0; bottom: 0; width: 2px; }
+  .guides .g-r { right: 64px; top: 0; bottom: 0; width: 2px; }
+  .guides .g-t { top: 64px; left: 0; right: 0; height: 2px; }
+  .guides .g-b { bottom: 150px; left: 0; right: 0; height: 2px; }
+  .guides .g-c { left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(0, 140, 255, 0.35); }
   .crop-handle { position: absolute; z-index: 20; background: rgba(0,120,255,0.30); transition: background 0.15s; touch-action: none; }
   .crop-handle:hover, .crop-handle.dragging { background: rgba(0,120,255,0.65); }
   .crop-handle[data-side="top"], .crop-handle[data-side="bottom"] { left: 0; right: 0; height: 40px; cursor: ns-resize; }
@@ -88,14 +122,7 @@
   .crop-handle[data-side="right"] { right: 0; }
 
   /* Image editor panel */
-  .image-editor {
-    position: fixed; z-index: 200;
-    background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
-    padding: 16px; width: 300px;
-    font-family: 'JetBrains Mono', monospace; font-size: 13px;
-    color: #ccc; display: none;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  }
+  .image-editor { display: none; }
   .image-editor.visible { display: block; }
   .image-editor label { display: block; margin-bottom: 6px; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   .image-editor .scale-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -116,7 +143,7 @@
   .image-editor .shape-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
   /* Кнопки панели: одинаковый зазор по горизонтали и вертикали при переносе */
   .image-editor .btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .image-editor .hint {
+  .image-editor .hint, .text-size-editor .hint {
     margin-top: 12px; color: #666; font-size: 11px; line-height: 1.5;
   }
 
@@ -254,6 +281,8 @@
     content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 12px; cursor: ew-resize;
   }
   .h-resizing { box-shadow: inset 0 0 0 3px rgba(0, 120, 255, 0.45); }
+  /* выбранный блок (открыта его панель): обводка 3px холста ≈ 1px на экране; в экспорт и файл не попадает */
+  .block.selected { outline: 3px solid rgba(90, 174, 255, 0.85); outline-offset: 6px; }
   .story img { -webkit-user-drag: none; user-select: none; }
   .block .block-controls { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; transition: opacity 0.2s; z-index: 10; }
   .block:hover .block-controls { opacity: 1; }
@@ -269,24 +298,27 @@
   .block::before { top: 0; } .block::after { bottom: 0; }
   .block.dragging { opacity: 0.5; z-index: 100; position: relative; transition: none; }
 
-  .text-size-editor {
-    position: fixed; z-index: 200;
-    background: #1a1a1a; border: 1px solid #444; border-radius: 8px;
-    padding: 12px 16px; width: 200px;
-    font-family: 'JetBrains Mono', monospace; font-size: 13px;
-    color: #ccc; display: none;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    max-height: calc(100vh - 70px); overflow-y: auto;
-  }
+  .text-size-editor { display: none; }
   .text-size-editor.visible { display: block; }
   .text-size-editor label { display: block; margin-bottom: 8px; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
   .size-btn-row { display: flex; gap: 6px; }
   .size-btn { flex: 1; padding: 8px 0; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #888; transition: all 0.15s; }
   .size-btn:hover { background: #333; color: #fff; }
   .size-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
-  /* Сетка 2×4 вместо столбика — панель текста компактнее в два раза */
-  .font-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-  .font-btn { padding: 5px 6px; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; cursor: pointer; font-size: 12px; color: #aaa; transition: all 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Шрифты — раскрывающийся список по группам (антиква, гротеск, акцидентные, рукописные, моно):
+     кнопка с текущим шрифтом, под ней прокручиваемый список, каждое имя набрано своим шрифтом */
+  .font-current { padding: 7px 10px; background: #222; border: 1px solid #444; border-radius: 4px; cursor: pointer; color: #fff; font-size: 15px;
+                  display: flex; justify-content: space-between; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+  .font-current::after { content: '▾'; color: #888; font-family: 'Inter', sans-serif; }
+  .font-row { display: none; max-height: 260px; overflow-y: auto; margin-top: 4px; border: 1px solid #333; border-radius: 4px; background: #181818; }
+  .font-row.open { display: block; }
+  .font-group { padding: 6px 8px 3px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #777; }
+  .font-btn { padding: 5px 10px; cursor: pointer; font-size: 16px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background 0.1s; }
+  .hl-style-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; }
+  .hl-style-btn { padding: 6px 2px; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; cursor: pointer; font-size: 11px; color: #aaa; white-space: nowrap; }
+  .hl-style-btn:hover { background: #333; color: #fff; }
+  .hl-style-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
+  .fade-side-btn.active, .fade-color-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
   .font-btn:hover { background: #333; color: #fff; }
   .font-btn.active { background: rgba(0,120,255,0.2); border-color: rgba(0,120,255,0.4); color: #4af; }
   .align-btn-row { display: flex; gap: 6px; margin-top: 10px; }
@@ -317,37 +349,171 @@
   }
   .toolbar .bg-swatch:hover { transform: scale(1.2); }
 
-  .sig-overlay {
-    position: fixed; inset: 0; z-index: 400;
-    background: rgba(0,0,0,0.72); display: none;
-    align-items: center; justify-content: center;
-  }
-  .sig-overlay.visible { display: flex; }
-  .sig-modal {
-    width: 420px; max-width: 90vw; background: #1e1e1e;
-    border: 1px solid #333; border-radius: 14px; padding: 26px;
-    font-family: 'Inter', sans-serif; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  }
-  .sig-modal .sig-title { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-  .sig-modal .sig-hint { font-size: 12px; color: #999; line-height: 1.55; margin-bottom: 16px; }
-  .sig-modal .sig-input {
-    width: 100%; background: #111; border: 1px solid #444; border-radius: 8px;
-    color: #fff; font-size: 14px; padding: 11px 13px; font-family: 'JetBrains Mono', monospace;
-  }
-  .sig-modal .sig-input:focus { outline: none; border-color: #4af; }
-  .sig-modal .sig-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-  .sig-modal .sig-actions button {
-    background: #333; color: #ccc; border: 1px solid #555; border-radius: 8px;
-    padding: 9px 16px; font-size: 13px; cursor: pointer;
-  }
-  .sig-modal .sig-actions button:hover { background: #444; color: #fff; }
-  .sig-modal .sig-actions .sig-save { background: #2563eb; border-color: #2563eb; color: #fff; }
-  .sig-modal .sig-actions .sig-save:hover { background: #1d4ed8; }
-
   .nav-arrow { position: fixed; top: 50%; transform: translateY(-50%); z-index: 90; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #888; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 22px; transition: all 0.15s; }
   .nav-arrow:hover { background: rgba(255,255,255,0.2); color: #fff; }
   .nav-arrow.left { left: 20px; } .nav-arrow.right { right: 20px; }
   .slide-counter { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #888; z-index: 100; letter-spacing: 0.05em; }
+
+  /* ===================== Интерфейс редактора (16.10.2026): инспектор у правого края =====================
+     Тулбар сверху, свойства выбранного блока или слайда — в инспекторе справа (как в Figma). Из трёх вариантов
+     дизайн-спринта автор выбрал этот (A). --tb — высота тулбара (measureToolbar пересчитывает, если тулбар
+     перенёсся на вторую строку), --dr — ширина инспектора; по ним сдвигаются слайд, стрелки и счётчик. */
+  :root {
+    --ui-bg: #171717; --ui-bg2: #222; --ui-bg3: #2b2b2b; --ui-line: #2e2e2e; --ui-line2: #3c3c3c;
+    --ui-fg: #ececec; --ui-mute: #a3a3a3; --ui-dim: #8a8a8a;
+    --ui-acc: #5aaeff; --ui-acc-bg: rgba(90, 174, 255, 0.16); --ui-acc-line: rgba(90, 174, 255, 0.45);
+    --ui-danger: #ff8a80; --ui-font: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+    --insp-w: 296px;
+    --tb: 46px; --dl: 0px; --dr: var(--insp-w);
+  }
+  ::selection { background: rgba(90, 174, 255, 0.35); }
+
+  .viewport { padding: var(--tb) var(--dr) 0 var(--dl); }
+  .nav-arrow { border-radius: 50%; width: 40px; height: 40px; font-size: 18px; transition: background .15s, color .15s; }
+  .nav-arrow.left { left: calc(var(--dl) + 16px); } .nav-arrow.right { right: calc(var(--dr) + 16px); }
+  .slide-counter { left: calc(var(--dl) + (100vw - var(--dl) - var(--dr)) / 2); font-variant-numeric: tabular-nums; }
+
+  /* ---- тулбар ---- */
+  .toolbar { z-index: 130; font-family: var(--ui-font); background: #121212; border-bottom-color: var(--ui-line); padding: 7px 12px; gap: 5px; }
+  .toolbar button { font-family: var(--ui-font); font-size: 12px; font-weight: 500; padding: 6px 9px; border-radius: 6px;
+                    background: var(--ui-bg2); border-color: var(--ui-line2); color: #d4d4d4; transition: background .15s, border-color .15s, color .15s; }
+  .toolbar button:hover { background: var(--ui-bg3); border-color: #4a4a4a; color: #fff; }
+  .toolbar button:focus-visible, .inspector :focus-visible { outline: 2px solid var(--ui-acc); outline-offset: 1px; }
+  .toolbar button.fmt-btn.active, #guides-btn.on { background: var(--ui-acc-bg); border-color: var(--ui-acc-line); color: var(--ui-acc); }
+  .toolbar .tb-save { background: #e9e9e9; color: #111; border-color: #e9e9e9; font-weight: 600; }
+  .toolbar .tb-save:hover { background: #fff; color: #000; border-color: #fff; }
+  .toolbar .sep { color: transparent; width: 1px; height: 22px; background: var(--ui-line2); margin: 0 4px; overflow: hidden; }
+  .tb-label { color: var(--ui-dim); font-size: 11px; font-weight: 500; margin-right: 2px; }
+  .toolbar .sep { margin: 0 2px; }
+  .tb-menu { position: relative; display: inline-flex; }
+  .tb-menu-btn { display: inline-flex; align-items: center; gap: 4px; }
+  .tb-menu-btn .i { width: 12px; height: 12px; }
+  .tb-pop { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 130; min-width: 150px; padding: 6px;
+    background: #1b1b1b; border: 1px solid var(--ui-line2); border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.45); flex-direction: column; gap: 4px; }
+  .tb-menu.open .tb-pop { display: flex; }
+  .tb-pop button { text-align: left; }
+
+  /* ---- инспектор ---- */
+  .inspector { position: fixed; z-index: 120; top: var(--tb); bottom: 0; right: 0; width: var(--insp-w);
+    background: var(--ui-bg); border-left: 1px solid var(--ui-line); color: var(--ui-fg);
+    font-family: var(--ui-font); font-size: 12.5px; line-height: 1.4;
+    overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
+  .inspector::-webkit-scrollbar { width: 8px; } .inspector::-webkit-scrollbar-thumb { background: #353535; border-radius: 4px; }
+  .inspector .image-editor.visible, .inspector .text-size-editor.visible { display: block; }
+  .insp-empty { display: none; }
+  .inspector:not(:has(.visible)) .insp-empty { display: block; }
+  .insp-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between;
+    height: 46px; padding: 0 10px 0 16px; background: var(--ui-bg); border-bottom: 1px solid var(--ui-line); }
+  .insp-title { font-size: 13px; font-weight: 600; color: #fff; }
+  .insp-close { width: 28px; height: 28px; display: grid; place-items: center; background: none; border: 0; border-radius: 6px; color: var(--ui-mute); cursor: pointer; }
+  .insp-close:hover { background: var(--ui-bg3); color: #fff; }
+  .bg-gallery { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; max-height: 260px; overflow-y: auto; scrollbar-width: thin; }
+  .bg-gallery:empty { display: none; }
+  .bg-gallery .bg-group { grid-column: 1 / -1; font-size: 11px; color: var(--ui-dim); margin: 6px 0 0; }
+  .bg-preset { aspect-ratio: 4 / 5; border-radius: 4px; background: #222 center / cover no-repeat; border: 1px solid var(--ui-line2); cursor: pointer; padding: 0; transition: border-color .15s, transform .1s; }
+  .bg-preset.wide { aspect-ratio: 16 / 9; }
+  .bg-preset:hover { border-color: #777; }
+  .bg-preset.active { border-color: var(--ui-acc); box-shadow: 0 0 0 1px var(--ui-acc); }
+  .toolbar .tb-pick { width: 15px; height: 15px; }
+  .insp-lead { padding: 0 0 4px; color: var(--ui-mute); font-size: 13px; line-height: 1.5; }
+  .insp-keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; padding: 8px 0 0; font-size: 12px; }
+  .insp-keys dt { color: var(--ui-fg); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .insp-keys dd { color: var(--ui-dim); }
+  .insp-sec { border-bottom: 1px solid var(--ui-line); padding: 14px 16px 16px; }
+  .insp-h { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--ui-mute); margin: 0 0 10px;
+    display: flex; align-items: center; justify-content: space-between; user-select: none; }
+  .insp-body > * + * { margin-top: 8px; }
+  .insp-note, .inspector .hint { color: var(--ui-dim); font-size: 12px; line-height: 1.5; margin-top: 8px; }
+  .insp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 14px 16px 6px; }
+  .image-editor > .hint { padding: 4px 16px 18px; margin: 0; }
+  /* иконки */
+  .i { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* кнопки и поля внутри инспектора — один словарь: высота 30, радиус 6 */
+  .inspector .editor-btn, .inspector .size-btn, .inspector .align-btn, .inspector .hl-style-btn {
+    font-family: var(--ui-font); font-size: 12px; font-weight: 500; color: #d4d4d4;
+    background: var(--ui-bg2); border: 1px solid var(--ui-line2); border-radius: 6px; cursor: pointer;
+    min-height: 30px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background .15s, border-color .15s, color .15s; white-space: nowrap; user-select: none; }
+  .inspector .editor-btn:hover, .inspector .size-btn:hover, .inspector .align-btn:hover, .inspector .hl-style-btn:hover {
+    background: var(--ui-bg3); border-color: #4a4a4a; color: #fff; }
+  .inspector .editor-btn.active, .inspector .size-btn.active, .inspector .align-btn.active, .inspector .hl-style-btn.active,
+  .inspector .shape-btn.active, .inspector .fade-side-btn.active, .inspector .fade-color-btn.active, #crop-btn.on {
+    background: var(--ui-acc-bg); border-color: var(--ui-acc-line); color: var(--ui-acc); }
+  .inspector .editor-btn.danger, .inspector .size-btn.danger { color: var(--ui-danger); border-color: rgba(255,138,128,.3); background: transparent; margin: 0; }
+  .inspector .editor-btn.danger:hover, .inspector .size-btn.danger:hover { background: rgba(255,90,80,.14); color: #ffb3ab; }
+  .inspector .editor-btn.wide { width: 100%; }
+  .inspector .icon-only { padding: 0; }
+  .btn-grid { display: grid; gap: 6px; }
+  .btn-grid.two { grid-template-columns: 1fr 1fr; } .btn-grid.three { grid-template-columns: repeat(3, 1fr); } .btn-grid.four { grid-template-columns: repeat(4, 1fr); }
+  .btn-grid.four .editor-btn { padding: 0 4px; gap: 4px; }
+  .btn-grid.fade-colors { grid-template-columns: repeat(3, 1fr) 30px 30px; align-items: center; }
+  .btn-grid.fade-colors .editor-btn { padding: 0 4px; }
+  .btn-grid.fade-colors .color-pick { width: 30px; height: 30px; }
+  .btn-grid.layer { grid-template-columns: 1fr 40px 1fr; align-items: center; }
+  .btn-grid .editor-btn[style*="display:none"] + .editor-btn { grid-column: 1 / -1; }
+  .layer-value { text-align: center; color: #fff; font-variant-numeric: tabular-nums; }
+  .shape-ic { width: 12px; height: 10px; border: 1.5px solid currentColor; display: inline-block; }
+  .shape-ic.rd { border-radius: 4px; } .shape-ic.ci { width: 11px; height: 11px; border-radius: 50%; }
+  .inspector input[type="text"] { width: 100%; height: 30px; background: #101010; border: 1px solid var(--ui-line2); border-radius: 6px;
+    padding: 0 10px; color: #fff; font: 12px 'JetBrains Mono', monospace; outline: none; margin: 0; }
+  .inspector input[type="text"]:focus { border-color: var(--ui-acc-line); }
+  .field-row { display: grid; grid-template-columns: 62px 1fr 44px; align-items: center; gap: 8px; }
+  .field-label { color: var(--ui-mute); font-size: 12px; }
+  .field-label.sub { margin-top: 12px; }
+  .inspector input[type="range"] { width: 100%; accent-color: var(--ui-acc); cursor: pointer; margin: 0; }
+  .inspector .scale-value { min-width: 0; text-align: right; color: #fff; font-variant-numeric: tabular-nums; font-size: 12px; }
+  #img-rot-value { cursor: pointer; }
+  .size-btn-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .stepper { display: grid; grid-template-columns: 62px 30px 1fr 30px; gap: 6px; align-items: center; }
+  .stepper .size-btn { padding: 0; }
+  .stepper .size-btn.value { cursor: default; color: #fff; font-variant-numeric: tabular-nums; background: #101010; }
+  #lh-value { cursor: pointer; }
+  .align-btn-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 0; }
+  .inspector .align-btn { padding: 0; }
+  .font-current { min-height: 34px; border-radius: 6px; background: var(--ui-bg2); border-color: var(--ui-line2); }
+  .font-current::after { content: ''; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; margin-top: -6px; border-right: 1.5px solid var(--ui-dim); border-bottom: 1.5px solid var(--ui-dim); transform: rotate(45deg); }
+  .font-current { background-image: none; position: relative; padding-right: 30px; }
+  .font-current:hover { border-color: #4a4a4a; }
+  .inspector .font-row { max-height: 300px; border-radius: 6px; border-color: var(--ui-line2); background: #121212; }
+  .inspector .font-group { font-family: var(--ui-font); font-weight: 600; letter-spacing: .04em; color: var(--ui-dim); }
+  .inspector .color-row { gap: 6px; margin-top: 0; }
+  .inspector .color-swatch { width: 24px; height: 24px; border-color: rgba(255,255,255,.16); }
+  .inspector .color-swatch.none { background: transparent; color: var(--ui-mute); border: 1px dashed #555; }
+  .inspector .color-swatch .i { width: 12px; height: 12px; }
+  .inspector .color-pick { width: 24px; height: 24px; }
+  /* стили выделения: кнопка показывает сам эффект на «Аа», цвет — текущий цвет выделения (--hl-ui) */
+  .hl-style-row { grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 0; }
+  .inspector .hl-style-btn { flex-direction: column; gap: 4px; min-height: 58px; padding: 6px 2px 5px; font-size: 11.5px; color: var(--ui-mute); }
+  /* превью на светлой «бумажке», как на слайде: тёмный текст читается под любым цветом выделения */
+  .hl-chip { display: inline-flex; align-items: center; justify-content: center; min-width: 46px; height: 26px; padding: 0 6px;
+    background: #f3f3f3; border-radius: 4px; }
+  .hl-pv { font: 700 16px/1.1 var(--ui-font); color: #111; --hl: var(--hl-ui, #fff176); }
+  .hl-pv.pv-fill { background: var(--hl-ui, #fff176); padding: 0 3px; }
+  .hl-pv.hl-circle { margin: 0; }
+
+  /* ручки поворота картинки: кружки у углов выбранной картинки, сверху всего, кроме инспектора */
+  /* Подпись в футере: окно при первом открытии, значение — в localStorage */
+  .sig-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.72); display: none; align-items: center; justify-content: center; }
+  .sig-overlay.visible { display: flex; }
+  .sig-modal { width: 420px; max-width: 90vw; background: #1b1b1b; border: 1px solid var(--ui-line2); border-radius: 12px; padding: 24px;
+    font-family: var(--ui-font); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .sig-modal .sig-title { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+  .sig-modal .sig-hint { font-size: 12.5px; color: var(--ui-mute); line-height: 1.55; margin-bottom: 16px; }
+  .sig-modal .sig-input { width: 100%; background: #101010; border: 1px solid var(--ui-line2); border-radius: 6px; color: #fff;
+    font: 13px 'JetBrains Mono', monospace; padding: 10px 12px; }
+  .sig-modal .sig-input:focus { outline: none; border-color: var(--ui-acc-line); }
+  .sig-modal .sig-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .sig-modal .sig-actions button { background: var(--ui-bg2); color: #d4d4d4; border: 1px solid var(--ui-line2); border-radius: 6px;
+    padding: 8px 14px; font: 500 12.5px var(--ui-font); cursor: pointer; }
+  .sig-modal .sig-actions button:hover { background: var(--ui-bg3); color: #fff; }
+  .sig-modal .sig-actions .sig-save { background: #e9e9e9; border-color: #e9e9e9; color: #111; font-weight: 600; }
+  .rot-handles { position: fixed; inset: 0; pointer-events: none; z-index: 110; display: none; }
+  .rot-handles.on { display: block; }
+  .rot-handles i { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff;
+    border: 2px solid var(--ui-acc); box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: auto; touch-action: none;
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M18.5 12a6.5 6.5 0 1 1-2.1-4.8' fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M18.5 12a6.5 6.5 0 1 1-2.1-4.8' fill='none' stroke='%23111' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M17.2 3.6v4.2H13' fill='none' stroke='%23111' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 12 12, grab; }
+  .rot-handles i:hover { transform: scale(1.25); }
 </style>
 </head>
 <body>
@@ -355,9 +521,9 @@
 <div class="toolbar">
   <button onclick="addTextBlock()" title="Добавить текстовый блок">+ Текст</button>
   <button onclick="addImageBlock()" title="Добавить блок-картинку">+ Картинка</button>
-  <button onclick="duplicateSlide()" title="Скопировать текущий слайд со всеми правками">⧉ Дубль</button>
+  <button onclick="duplicateSlide()" title="Скопировать текущий слайд со всеми правками">Дубль</button>
   <span class="sep">|</span>
-  <span style="color:#666;font-family:'JetBrains Mono',monospace;font-size:11px;margin-right:2px;">ФОН</span>
+  <span class="tb-label">Фон</span>
   <div class="bg-swatches">
     <div class="bg-swatch" style="background:#ffffff" data-bg="#ffffff" title="Белый"></div>
     <div class="bg-swatch" style="background:#ededed" data-bg="#ededed" title="Серый"></div>
@@ -368,23 +534,30 @@
     <div class="bg-swatch" style="background:#bbf7d0" data-bg="#bbf7d0" title="Мята"></div>
     <div class="bg-swatch" style="background:#e9d5ff" data-bg="#e9d5ff" title="Лаванда"></div>
     <div class="bg-swatch" style="background:#5b21b6" data-bg="#5b21b6" data-dark="1" title="Фиолетовый"></div>
+    <label class="color-pick tb-pick" title="Любой цвет фона слайда"><input type="color" id="tb-bg-pick"></label>
   </div>
   <span class="sep">|</span>
-  <span style="color:#666;font-family:'JetBrains Mono',monospace;font-size:11px;margin-right:2px;">ФОРМАТ</span>
+  <span class="tb-label">Формат</span>
   <button class="fmt-btn active" data-fmt="story" onclick="setFormat('story')" title="Instagram Stories / Reels — 1080×1920">9:16</button>
   <button class="fmt-btn" data-fmt="post" onclick="setFormat('post')" title="Instagram пост — 1080×1350">4:5</button>
+  <button class="fmt-btn" data-fmt="wide" onclick="setFormat('wide')" title="Горизонтальная обложка — 1920×1080">16:9</button>
   <span class="sep">|</span>
-  <button id="moodboard-btn" onclick="openMoodboard()" style="display:none">🖼 Мудборд</button>
+  <button id="guides-btn" onclick="toggleGuides()" title="Направляющие: поля 64px и граница низа над футером (в экспорт не попадают)">Поля</button>
+  <span class="sep">|</span>
+  <button id="moodboard-btn" onclick="openMoodboard()" style="display:none">Мудборд</button>
   <span class="sep" id="moodboard-sep" style="display:none">|</span>
-  <button onclick="downloadOne(current,'png')" title="Экспорт текущего слайда в PNG">↓ PNG</button>
-  <button onclick="downloadOne(current,'jpeg')" title="Экспорт текущего слайда в JPEG">↓ JPEG</button>
+  <button onclick="openSignature()" title="Подпись в углу каждой карточки">Подпись</button>
+  <button id="png-btn" onclick="downloadOne(current,'png')" title="Выгрузить открытый слайд в PNG">PNG</button>
+  <span class="tb-menu" id="export-menu">
+    <button class="tb-menu-btn" onclick="toggleExportMenu(event)" aria-haspopup="true" title="Выгрузить слайды картинками">Экспорт<svg class="i"><use href="#i-chev"/></svg></button>
+    <span class="tb-pop">
+      <button onclick="downloadOne(current,'jpeg')" title="Экспорт текущего слайда в JPEG">Слайд JPEG</button>
+      <button onclick="downloadAll('png')" title="Экспорт всех слайдов в PNG">Все PNG</button>
+      <button onclick="downloadAll('jpeg')" title="Экспорт всех слайдов в JPEG">Все JPEG</button>
+    </span>
+  </span>
   <span class="sep">|</span>
-  <button onclick="downloadAll('png')" title="Экспорт всех слайдов в PNG">⇊ Все PNG</button>
-  <button onclick="downloadAll('jpeg')" title="Экспорт всех слайдов в JPEG">⇊ Все JPEG</button>
-  <span class="sep">|</span>
-  <button onclick="openSignature()" title="Подпись в футере каждой карточки">✏️ Подпись</button>
-  <span class="sep">|</span>
-  <button onclick="saveDocument()" title="Записать всю вёрстку обратно в этот HTML-файл (Cmd+S)">💾 Сохранить</button>
+  <button class="tb-save" onclick="saveDocument()" title="Записать всю вёрстку обратно в этот HTML-файл (Cmd+S)">Сохранить</button>
 </div>
 
 <div class="viewport">
@@ -498,92 +671,256 @@
 
 </div>
 
-<!-- Image Editor Panel -->
-<div class="image-editor" id="image-editor">
-  <label>Масштаб</label>
-  <div class="scale-row">
-    <input type="range" id="img-scale" min="20" max="400" value="100" />
-    <span class="scale-value" id="img-scale-value">100%</span>
-  </div>
-  <label>URL картинки</label>
-  <input type="text" id="img-url-input" placeholder="images/… или https://…" />
-  <input type="file" id="img-file-input" accept="image/*" style="display:none" />
-  <div class="btn-group">
-    <button class="editor-btn" id="mb-open-btn" onclick="openMoodboard(activeImgTarget)" style="display:none">🖼 Из мудборда</button>
-    <button class="editor-btn" onclick="document.getElementById('img-file-input').click()">📁 Загрузить файл</button>
-    <button class="editor-btn" id="crop-btn" onclick="toggleCropMode()">✂ Обрезка</button>
-    <button class="editor-btn" onclick="resetImageTransform()">↺ Сброс</button>
-    <button class="editor-btn danger" onclick="deleteActiveBlock()">✕ Удалить блок</button>
-    <button class="editor-btn" onclick="closeImageEditor()">Закрыть</button>
-  </div>
-  <label style="margin-top: 14px;">Форма</label>
-  <div class="btn-group" id="shape-row">
-    <button class="editor-btn shape-btn" data-shape="none" onclick="setImageShape('none')" title="Прямоугольник как есть">▭ Как есть</button>
-    <button class="editor-btn shape-btn" data-shape="rounded" onclick="setImageShape('rounded')" title="Скруглённые углы">▢ Скругл.</button>
-    <button class="editor-btn shape-btn" data-shape="circle" onclick="setImageShape('circle')" title="Круг: неквадратную картинку дообрежет до квадрата по центру">◯ Круг</button>
-  </div>
-  <label style="margin-top: 14px;">Слой (наложение)</label>
-  <div class="btn-group">
-    <button class="editor-btn" onclick="moveLayer(-1)" title="Опустить блок под соседние">⬇ Ниже</button>
-    <span id="img-layer-value" style="min-width: 24px; text-align: center; color: #fff;">0</span>
-    <button class="editor-btn" onclick="moveLayer(1)" title="Поднять блок над соседними">⬆ Выше</button>
-  </div>
-  <div class="hint">Тяни картинку мышью — перемещение. Слайдер — масштаб. «✂ Обрезка» — тяни синие полоски по краям; обрезается только та сторона. Можно перетащить файл прямо на картинку — заменится.</div>
+<!-- Иконки интерфейса (спрайт): обводка 1.6, сетка 16 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-al" viewBox="0 0 16 16"><path d="M2.5 3.5h11M2.5 6.5h7M2.5 9.5h11M2.5 12.5h7"/></symbol>
+  <symbol id="i-ac" viewBox="0 0 16 16"><path d="M2.5 3.5h11M4.5 6.5h7M2.5 9.5h11M4.5 12.5h7"/></symbol>
+  <symbol id="i-ar" viewBox="0 0 16 16"><path d="M2.5 3.5h11M6.5 6.5h7M2.5 9.5h11M6.5 12.5h7"/></symbol>
+  <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 2.5v10M4 8.5l4 4 4-4"/></symbol>
+  <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 13.5v-10M4 7.5l4-4 4 4"/></symbol>
+  <symbol id="i-left" viewBox="0 0 16 16"><path d="M13.5 8h-10M7.5 4l-4 4 4 4"/></symbol>
+  <symbol id="i-right" viewBox="0 0 16 16"><path d="M2.5 8h10M8.5 4l4 4-4 4"/></symbol>
+  <symbol id="i-rot" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M11.8 1.8v2.8H9"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M4.2 1.8v2.8H7"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9"/></symbol>
+  <symbol id="i-crop" viewBox="0 0 16 16"><path d="M4 1.5V12h10.5M1.5 4H12v10.5"/></symbol>
+  <symbol id="i-file" viewBox="0 0 16 16"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 10v3.5h11V10"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M4.5 6.5L8 10l3.5-3.5"/></symbol>
+</svg>
+
+<!-- Инспектор: прилеплен к краю экрана (вариант раскладки — переключатель «Вид» в тулбаре).
+     Внутри две панели (картинка / текст) и подсказка, когда ничего не выбрано. Ids и классы панелей
+     прежние — на них завязаны скрипт и смоук-тесты. -->
+<aside class="inspector" id="inspector" aria-label="Свойства">
+<div class="insp-empty" id="slide-panel">
+  <div class="insp-head"><span class="insp-title" id="slide-panel-title">Слайд 1</span></div>
+  <section class="insp-sec" data-sec="slide-bg">
+    <h4 class="insp-h">Фон</h4>
+    <div class="insp-body">
+      <div class="color-row" id="slide-bg-row">
+        <div class="color-swatch slide-bg-swatch" style="background:#ffffff" data-bg="#ffffff" title="Белый"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#ededed" data-bg="#ededed" title="Серый"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#111111" data-bg="#111111" data-dark="1" title="Чёрный"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#fff176" data-bg="#fff176" title="Жёлтый"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#ffb4a2" data-bg="#ffb4a2" title="Коралл"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#a5f3fc" data-bg="#a5f3fc" title="Голубой"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#bbf7d0" data-bg="#bbf7d0" title="Мята"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#e9d5ff" data-bg="#e9d5ff" title="Лаванда"></div>
+        <div class="color-swatch slide-bg-swatch" style="background:#5b21b6" data-bg="#5b21b6" data-dark="1" title="Фиолетовый"></div>
+        <label class="color-pick" title="Любой цвет"><input type="color" id="slide-bg-pick"></label>
+      </div>
+      <div class="field-label sub">Картинка фона</div>
+      <div class="bg-gallery" id="bg-gallery"></div>
+      <input type="file" id="bg-file-input" accept="image/*" style="display:none" />
+      <div class="btn-grid two">
+        <button class="editor-btn" id="bg-upload-btn" onclick="document.getElementById('bg-file-input').click()"><svg class="i"><use href="#i-file"/></svg>Загрузить фон</button>
+        <button class="editor-btn" id="bg-clear-btn" onclick="setSlideBgImage(null)"><svg class="i"><use href="#i-x"/></svg>Убрать картинку</button>
+      </div>
+    </div>
+  </section>
+  <section class="insp-sec" data-sec="slide-help">
+    <h4 class="insp-h">Как работать</h4>
+    <div class="insp-body">
+      <p class="insp-lead">Кликни по тексту или картинке на слайде — здесь появятся их настройки.</p>
+      <dl class="insp-keys">
+        <dt>← →</dt><dd>соседний слайд</dd>
+        <dt>⌘ Z · ⇧⌘ Z</dt><dd>отменить · повторить</dd>
+        <dt>⌫</dt><dd>удалить выбранный блок</dd>
+        <dt>Esc</dt><dd>выйти из текста · снять выбор</dd>
+        <dt>⌘ S</dt><dd>сохранить в этот файл</dd>
+        <dt>Перетаскивание</dt><dd>файл на картинку заменяет её</dd>
+      </dl>
+    </div>
+  </section>
 </div>
 
-<!-- Text Size Editor Panel -->
-<div class="text-size-editor" id="text-size-editor">
-  <label>Размер текста</label>
-  <div class="size-btn-row">
-    <div class="size-btn" data-size="0">S</div>
-    <div class="size-btn" data-size="1">M</div>
-    <div class="size-btn" data-size="2">L</div>
+<!-- Панель картинки -->
+<div class="image-editor" id="image-editor">
+  <div class="insp-head"><span class="insp-title">Картинка</span>
+    <button class="insp-close" onclick="closeImageEditor()" title="Закрыть (Esc)" aria-label="Закрыть"><svg class="i"><use href="#i-x"/></svg></button></div>
+
+  <section class="insp-sec" data-sec="img-src">
+    <h4 class="insp-h">Источник</h4>
+    <div class="insp-body">
+      <input type="text" id="img-url-input" placeholder="images/… или https://…" spellcheck="false" />
+      <input type="file" id="img-file-input" accept="image/*" style="display:none" />
+      <div class="btn-grid two">
+        <button class="editor-btn" id="mb-open-btn" onclick="openMoodboard(activeImgTarget)" style="display:none"><svg class="i"><use href="#i-grid"/></svg>Из мудборда</button>
+        <button class="editor-btn" onclick="document.getElementById('img-file-input').click()"><svg class="i"><use href="#i-file"/></svg>Загрузить файл</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="img-geo">
+    <h4 class="insp-h">Масштаб и поворот</h4>
+    <div class="insp-body">
+      <div class="field-row"><span class="field-label">Масштаб</span>
+        <input type="range" id="img-scale" min="20" max="400" value="100" />
+        <span class="scale-value" id="img-scale-value">100%</span></div>
+      <div class="field-row"><span class="field-label">Поворот</span>
+        <input type="range" id="img-rot" min="-180" max="180" value="0" step="1" />
+        <span class="scale-value" id="img-rot-value" title="Клик — вернуть 0°" onclick="setImageRotation(0)">0°</span></div>
+      <div class="insp-note">Поворачивать можно и за углы картинки, с Shift — шагом 15°.</div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="img-shape">
+    <h4 class="insp-h">Обрезка и форма</h4>
+    <div class="insp-body">
+      <button class="editor-btn wide" id="crop-btn" onclick="toggleCropMode()"><svg class="i"><use href="#i-crop"/></svg>Обрезка</button>
+      <div class="btn-grid three" id="shape-row">
+        <button class="editor-btn shape-btn" data-shape="none" onclick="setImageShape('none')" title="Прямоугольник как есть"><i class="shape-ic sq"></i>Как есть</button>
+        <button class="editor-btn shape-btn" data-shape="rounded" onclick="setImageShape('rounded')" title="Скруглённые углы"><i class="shape-ic rd"></i>Скругл.</button>
+        <button class="editor-btn shape-btn" data-shape="circle" onclick="setImageShape('circle')" title="Круг: неквадратную картинку дообрежет до квадрата по центру"><i class="shape-ic ci"></i>Круг</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="img-fade">
+    <h4 class="insp-h">Растяжка в фон</h4>
+    <div class="insp-body">
+      <div class="btn-grid four" id="fade-sides">
+        <button class="editor-btn fade-side-btn" data-side="bottom" onclick="toggleFadeSide('bottom')" title="Картинка уходит в фон нижним краем"><svg class="i"><use href="#i-down"/></svg>Низ</button>
+        <button class="editor-btn fade-side-btn" data-side="top" onclick="toggleFadeSide('top')" title="Верхним краем"><svg class="i"><use href="#i-up"/></svg>Верх</button>
+        <button class="editor-btn fade-side-btn" data-side="left" onclick="toggleFadeSide('left')" title="Левым краем"><svg class="i"><use href="#i-left"/></svg>Лево</button>
+        <button class="editor-btn fade-side-btn" data-side="right" onclick="toggleFadeSide('right')" title="Правым краем"><svg class="i"><use href="#i-right"/></svg>Право</button>
+      </div>
+      <div class="field-row"><span class="field-label">Длина</span>
+        <input type="range" id="fade-len" min="10" max="80" value="40" />
+        <span class="scale-value" id="fade-len-value">40%</span></div>
+      <div class="btn-grid fade-colors" id="fade-colors">
+        <button class="editor-btn fade-color-btn" data-color="auto" onclick="setFadeColor('auto')" title="Фото становится прозрачным к краю — сквозь него виден фон слайда: цвет, картинка фона, блоки ниже">Как фон</button>
+        <button class="editor-btn fade-color-btn" data-color="#ffffff" onclick="setFadeColor('#ffffff')">Белый</button>
+        <button class="editor-btn fade-color-btn" data-color="#111111" onclick="setFadeColor('#111111')">Чёрный</button>
+        <label class="color-pick" title="Свой цвет растяжки"><input type="color" id="fade-pick"></label>
+        <button class="editor-btn icon-only" onclick="clearFade()" title="Убрать растяжку" aria-label="Убрать растяжку"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="img-layer">
+    <h4 class="insp-h">Слой</h4>
+    <div class="insp-body">
+      <div class="btn-grid layer">
+        <button class="editor-btn" onclick="moveLayer(-1)" title="Опустить блок под соседние"><svg class="i"><use href="#i-down"/></svg>Ниже</button>
+        <span class="layer-value" id="img-layer-value">0</span>
+        <button class="editor-btn" onclick="moveLayer(1)" title="Поднять блок над соседними"><svg class="i"><use href="#i-up"/></svg>Выше</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="insp-actions">
+    <button class="editor-btn" onclick="resetImageTransform()" title="Вернуть масштаб, сдвиг, поворот и обрезку"><svg class="i"><use href="#i-reset"/></svg>Сброс</button>
+    <button class="editor-btn danger" onclick="deleteActiveBlock()"><svg class="i"><use href="#i-trash"/></svg>Удалить блок</button>
   </div>
-  <div class="size-btn-row" id="font-adjust-row" style="margin-top: 6px;">
-    <div class="size-btn" onclick="adjustFontSize(-2)">−</div>
-    <div class="size-btn" id="font-px" style="cursor: default;">–</div>
-    <div class="size-btn" onclick="adjustFontSize(2)">+</div>
-  </div>
-  <label style="margin-top: 10px;">Шрифт</label>
-  <div class="font-row" id="font-row"></div>
-  <label style="margin-top: 10px;">Выравнивание</label>
-  <div class="align-btn-row">
-    <div class="align-btn" data-align="left">⫷</div>
-    <div class="align-btn" data-align="center">☰</div>
-    <div class="align-btn" data-align="right">⫸</div>
-  </div>
-  <label style="margin-top: 10px;">Слой (наложение)</label>
-  <div class="size-btn-row">
-    <div class="size-btn" onclick="moveLayer(-1)" title="Опустить блок под соседние">⬇</div>
-    <div class="size-btn" id="text-layer-value" style="cursor: default;">0</div>
-    <div class="size-btn" onclick="moveLayer(1)" title="Поднять блок над соседними">⬆</div>
-  </div>
-  <label style="margin-top: 12px;">Цвет текста</label>
-  <div class="color-row" data-mode="text">
-    <div class="color-swatch" style="background:#111111" data-color="#111111" title="Чёрный"></div>
-    <div class="color-swatch" style="background:#ffffff; border-color: #444;" data-color="#ffffff" title="Белый"></div>
-    <div class="color-swatch" style="background:#6b7280" data-color="#6b7280" title="Серый"></div>
-    <div class="color-swatch" style="background:#d62828" data-color="#d62828" title="Красный"></div>
-    <div class="color-swatch" style="background:#1d4ed8" data-color="#1d4ed8" title="Синий"></div>
-    <div class="color-swatch" style="background:#16a34a" data-color="#16a34a" title="Зелёный"></div>
-    <div class="color-swatch" style="background:#7c3aed" data-color="#7c3aed" title="Фиолетовый"></div>
-    <label class="color-pick" title="Свой цвет"><input type="color"></label>
-  </div>
-  <label style="margin-top: 10px;">Подсветка / фон плашки</label>
-  <div class="color-row" data-mode="highlight">
-    <div class="color-swatch" style="background:transparent; color:#888;" data-color="transparent" title="Без подсветки">✕</div>
-    <div class="color-swatch" style="background:#ffffff; border-color:#444;" data-color="#ffffff" title="Белый"></div>
-    <div class="color-swatch" style="background:#fff176" data-color="#fff176" title="Жёлтый"></div>
-    <div class="color-swatch" style="background:#ffb4a2" data-color="#ffb4a2" title="Коралл"></div>
-    <div class="color-swatch" style="background:#a5f3fc" data-color="#a5f3fc" title="Голубой"></div>
-    <div class="color-swatch" style="background:#bbf7d0" data-color="#bbf7d0" title="Мята"></div>
-    <div class="color-swatch" style="background:#e9d5ff" data-color="#e9d5ff" title="Лаванда"></div>
-    <div class="color-swatch" style="background:#111111; color:#fff;" data-color="#111111" title="Чёрный"></div>
-    <label class="color-pick" title="Свой цвет"><input type="color"></label>
-  </div>
-  <div class="size-btn" onclick="resetTextLayout()" style="margin-top: 14px;" title="Вернуть блок на место: убрать вертикальный сдвиг и сужение краёв">↺ Сброс положения</div>
-  <div class="size-btn danger" onclick="deleteActiveBlock()" style="margin-top: 8px;">✕ Удалить блок</div>
+  <div class="hint">Тяни картинку мышью — перемещение. «Обрезка» — тяни синие полосы по краям, обрезается только эта сторона. Файл можно перетащить прямо на картинку — она заменится.</div>
 </div>
+
+<!-- Панель текста -->
+<div class="text-size-editor" id="text-size-editor">
+  <div class="insp-head"><span class="insp-title">Текст</span>
+    <button class="insp-close" onclick="closeSizeEditor()" title="Закрыть (Esc)" aria-label="Закрыть"><svg class="i"><use href="#i-x"/></svg></button></div>
+
+  <section class="insp-sec" data-sec="txt-size">
+    <h4 class="insp-h">Размер и интервал</h4>
+    <div class="insp-body">
+      <div class="size-btn-row">
+        <div class="size-btn" data-size="0" title="Мелкий текст">S</div>
+        <div class="size-btn" data-size="1" title="Обычный абзац">M</div>
+        <div class="size-btn" data-size="2" title="Крупная цитата">L</div>
+      </div>
+      <div class="stepper" id="font-adjust-row"><span class="field-label">Кегль</span>
+        <div class="size-btn" onclick="adjustFontSize(-2)" title="Меньше на 2 px">−</div>
+        <div class="size-btn value" id="font-px">–</div>
+        <div class="size-btn" onclick="adjustFontSize(2)" title="Больше на 2 px">+</div></div>
+      <div class="stepper" id="line-height-row"><span class="field-label">Интервал</span>
+        <div class="size-btn" onclick="adjustLineHeight(-0.05)" title="Строки плотнее">−</div>
+        <div class="size-btn value" id="lh-value" onclick="resetLineHeight()" title="Клик — интервал по умолчанию">–</div>
+        <div class="size-btn" onclick="adjustLineHeight(0.05)" title="Строки свободнее">+</div></div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="txt-font">
+    <h4 class="insp-h">Шрифт</h4>
+    <div class="insp-body">
+      <div class="font-current" id="font-current" onclick="toggleFontList()" title="Выбрать шрифт">Inter</div>
+      <div class="font-row" id="font-row"></div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="txt-align">
+    <h4 class="insp-h">Выравнивание и слой</h4>
+    <div class="insp-body">
+      <div class="align-btn-row">
+        <div class="align-btn" data-align="left" title="По левому краю"><svg class="i"><use href="#i-al"/></svg></div>
+        <div class="align-btn" data-align="center" title="По центру"><svg class="i"><use href="#i-ac"/></svg></div>
+        <div class="align-btn" data-align="right" title="По правому краю"><svg class="i"><use href="#i-ar"/></svg></div>
+      </div>
+      <div class="stepper"><span class="field-label">Слой</span>
+        <div class="size-btn" onclick="moveLayer(-1)" title="Опустить блок под соседние"><svg class="i"><use href="#i-down"/></svg></div>
+        <div class="size-btn value" id="text-layer-value">0</div>
+        <div class="size-btn" onclick="moveLayer(1)" title="Поднять блок над соседними"><svg class="i"><use href="#i-up"/></svg></div></div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="txt-color">
+    <h4 class="insp-h">Цвет текста</h4>
+    <div class="insp-body">
+      <div class="color-row" data-mode="text">
+        <div class="color-swatch" style="background:#111111" data-color="#111111" title="Чёрный"></div>
+        <div class="color-swatch" style="background:#ffffff" data-color="#ffffff" title="Белый"></div>
+        <div class="color-swatch" style="background:#6b7280" data-color="#6b7280" title="Серый"></div>
+        <div class="color-swatch" style="background:#d62828" data-color="#d62828" title="Красный"></div>
+        <div class="color-swatch" style="background:#1d4ed8" data-color="#1d4ed8" title="Синий"></div>
+        <div class="color-swatch" style="background:#16a34a" data-color="#16a34a" title="Зелёный"></div>
+        <div class="color-swatch" style="background:#7c3aed" data-color="#7c3aed" title="Фиолетовый"></div>
+        <label class="color-pick" title="Свой цвет"><input type="color"></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="insp-sec" data-sec="txt-hl">
+    <h4 class="insp-h">Выделение и плашки</h4>
+    <div class="insp-body">
+      <div class="hl-style-row" id="hl-style-row">
+        <div class="hl-style-btn active" data-hl="fill" title="Прямоугольная заливка"><span class="hl-chip"><span class="hl-pv pv-fill">Аа</span></span>Заливка</div>
+        <div class="hl-style-btn" data-hl="round" title="Плашка со скруглёнными краями"><span class="hl-chip"><span class="hl-pv hl hl-round">Аа</span></span>Плашка</div>
+        <div class="hl-style-btn" data-hl="marker" title="Полоса на нижней половине строки, как текстовыделителем"><span class="hl-chip"><span class="hl-pv hl hl-marker">Аа</span></span>Маркер</div>
+        <div class="hl-style-btn" data-hl="under" title="Толстое цветное подчёркивание"><span class="hl-chip"><span class="hl-pv hl hl-under">Аа</span></span>Линия</div>
+        <div class="hl-style-btn" data-hl="pill" title="Контур со скруглёнными краями, без заливки"><span class="hl-chip"><span class="hl-pv hl hl-pill">Аа</span></span>Контур</div>
+        <div class="hl-style-btn" data-hl="strike" title="Зачёркивание полосой"><span class="hl-chip"><span class="hl-pv hl hl-strike">Аа</span></span>Зачёрк.</div>
+        <div class="hl-style-btn" data-hl="circle" title="Обвести от руки"><span class="hl-chip"><span class="hl-pv hl hl-circle" data-hl="circle">Аа</span></span>Обвести</div>
+        <div class="hl-style-btn" data-hl="scribble" title="Подчеркнуть маркером от руки"><span class="hl-chip"><span class="hl-pv hl hl-scribble" data-hl="scribble">Аа</span></span>Маркером</div>
+        <div class="hl-style-btn" data-hl="pencil" title="Подчеркнуть карандашом от руки"><span class="hl-chip"><span class="hl-pv hl hl-pencil" data-hl="pencil">Аа</span></span>Карандаш</div>
+      </div>
+      <div class="field-label sub">Цвет выделения и плашек</div>
+      <div class="color-row" data-mode="highlight">
+        <div class="color-swatch none" data-color="transparent" title="Снять выделение"><svg class="i"><use href="#i-x"/></svg></div>
+        <div class="color-swatch" style="background:#ffffff" data-color="#ffffff" title="Белый"></div>
+        <div class="color-swatch" style="background:#fff176" data-color="#fff176" title="Жёлтый"></div>
+        <div class="color-swatch" style="background:#ffb4a2" data-color="#ffb4a2" title="Коралл"></div>
+        <div class="color-swatch" style="background:#a5f3fc" data-color="#a5f3fc" title="Голубой"></div>
+        <div class="color-swatch" style="background:#bbf7d0" data-color="#bbf7d0" title="Мята"></div>
+        <div class="color-swatch" style="background:#e9d5ff" data-color="#e9d5ff" title="Лаванда"></div>
+        <div class="color-swatch" style="background:#D93A21" data-color="#D93A21" title="Красный"></div>
+        <div class="color-swatch" style="background:#111111" data-color="#111111" title="Чёрный"></div>
+        <label class="color-pick" title="Свой цвет"><input type="color"></label>
+      </div>
+      <div class="hint">У слова одно выделение: новое заменяет старое там, где они пересекаются. Без выделения стиль и цвет меняют все выделения и плашки блока, крестик их снимает.</div>
+    </div>
+  </section>
+
+  <div class="insp-actions">
+    <div class="size-btn" onclick="resetTextLayout()" title="Вернуть блок на место: убрать вертикальный сдвиг и сужение краёв"><svg class="i"><use href="#i-reset"/></svg>Сброс положения</div>
+    <div class="size-btn danger" onclick="deleteActiveBlock()"><svg class="i"><use href="#i-trash"/></svg>Удалить блок</div>
+  </div>
+</div>
+</aside>
+
+<!-- Ручки поворота картинки: слой поверх всего, ставится в углы выбранной картинки (в файл и экспорт не попадает) -->
+<div class="rot-handles" id="rot-handles"><i data-c="0"></i><i data-c="1"></i><i data-c="2"></i><i data-c="3"></i></div>
 
 <!-- Moodboard popup -->
 <div class="moodboard-overlay" id="moodboard-overlay">
@@ -597,7 +934,7 @@
 <div class="sig-overlay" id="sig-overlay">
   <div class="sig-modal">
     <div class="sig-title">Подпись в углу карточек</div>
-    <div class="sig-hint">Адрес блога или имя — появится в правом нижнем углу каждой карточки. Можно оставить пустым, тогда угол будет чистым. Поменять можно в любой момент кнопкой «✏️ Подпись».</div>
+    <div class="sig-hint">Адрес блога или имя — появится в правом нижнем углу каждой карточки. Можно оставить пустым, тогда угол будет чистым. Поменять можно в любой момент кнопкой «Подпись».</div>
     <input type="text" id="sig-input" class="sig-input" placeholder="например, yourblog.com" autocomplete="off">
     <div class="sig-actions">
       <button class="sig-empty" onclick="saveSignature('')">Без подписи</button>
@@ -611,6 +948,7 @@
 <div class="slide-counter" id="slide-counter"></div>
 
 <script src="moodboard-data.js"></script>
+<script src="backgrounds/backgrounds.js" onerror="window.BACKGROUNDS = window.BACKGROUNDS || []"></script>
 <script>
 const SCALE = 0.38;
 const NUDGE_STEP = 20;
@@ -647,26 +985,40 @@ function goTo(i) {
   current = i;
   slides[current].classList.add('active');
   updateCounter();
+  if (rotReady) placeRotHandles();
+  if (typeof syncSlidePanel === 'function') syncSlidePanel();
 }
 function go(dir) { goTo(current + dir); }
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.isContentEditable) return;
+  if (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return; // ползунки и поля — свои стрелки
   if (e.key === 'ArrowLeft')  { e.preventDefault(); go(-1); }
   if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
 });
 
-function getTranslateY(el) {
-  const match = el.style.transform && el.style.transform.match(/translateY\((-?\d+(?:\.\d+)?)px\)/);
-  return match ? parseFloat(match[1]) : 0;
+// Сдвиг блока по слайду — inline transform: translate(Xpx, Ypx) в координатах холста (с 16.10.2026 в обеих осях).
+// Старые файлы хранят translateY(Ypx) — читаются как X = 0. Нулевой сдвиг чистит стиль.
+function getTranslate(el) {
+  const t = el.style.transform || '';
+  let m = t.match(/translate\((-?[\d.]+)px(?:,\s*(-?[\d.]+)px)?\)/);
+  if (m) return { x: parseFloat(m[1]), y: m[2] ? parseFloat(m[2]) : 0 };
+  m = t.match(/translateY\((-?[\d.]+)px\)/);
+  return { x: 0, y: m ? parseFloat(m[1]) : 0 };
 }
-function setTranslateY(el, val) { el.style.transform = 'translateY(' + val + 'px)'; }
+function setTranslate(el, x, y) {
+  x = Math.round(x * 10) / 10; y = Math.round(y * 10) / 10;
+  el.style.transform = (x || y) ? `translate(${x}px, ${y}px)` : '';
+}
+function getTranslateY(el) { return getTranslate(el).y; }
+function setTranslateY(el, val) { setTranslate(el, getTranslate(el).x, val); }
 
 function nudge(btn, dir) {
   const block = btn.closest('.block');
   setTranslateY(block, getTranslateY(block) + dir * NUDGE_STEP);
 }
 
+// ручки поворота готовы (их код ниже) — до этого applyWrapTransform/goTo при загрузке их не трогают
+var rotReady = false;
 // ===== Image transform (scale + translate) =====
 // Разделение: перенос по слайду (tx/ty) живёт на обёртке .img-crop — окно кропа едет
 // вместе с картинкой; на самом img — масштаб и панорама внутри окна (только в режиме обрезки).
@@ -693,7 +1045,8 @@ function applyWrapTransform(img) {
   const c = getCrop(img);
   // (l − r)/2 — компенсация flex-центрирования обрезанного окна.
   // scale на обёртке масштабирует обрезанную картинку целиком (окно + содержимое).
-  wrap.style.transform = `translate(${w.tx + (c.l - c.r) / 2}px, ${w.ty}px) scale(${w.scale || 1})`;
+  wrap.style.transform = `translate(${w.tx + (c.l - c.r) / 2}px, ${w.ty}px) scale(${w.scale || 1})` + (w.rot ? ` rotate(${w.rot}deg)` : '');
+  if (rotReady && img === activeImgTarget) placeRotHandles();
 }
 
 // Capture-phase handlers for image interactions — run before generic block drag.
@@ -855,7 +1208,8 @@ function toggleCropMode() {
     wrap.appendChild(h);
   });
   const btn = document.getElementById('crop-btn');
-  if (btn) btn.textContent = '✂ Готово';
+  if (btn) { btn.classList.add('on'); btn.lastChild.textContent = 'Готово'; }
+  placeRotHandles();
   syncScaleUI(target); // в режиме обрезки слайдер = зум внутри окна
 }
 function exitCropMode() {
@@ -867,7 +1221,8 @@ function exitCropMode() {
   }
   cropTarget = null;
   const btn = document.getElementById('crop-btn');
-  if (btn) btn.textContent = '✂ Обрезка';
+  if (btn) { btn.classList.remove('on'); btn.lastChild.textContent = 'Обрезка'; }
+  placeRotHandles();
   if (activeImgTarget) syncScaleUI(activeImgTarget); // слайдер обратно = масштаб целиком
 }
 
@@ -905,6 +1260,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') exitCropMo
 
 // ===== Image Editor Panel =====
 const imgEditorPanel = document.getElementById('image-editor');
+const inspector = document.getElementById('inspector');
 const imgScaleInput = document.getElementById('img-scale');
 const imgScaleValue = document.getElementById('img-scale-value');
 const imgUrlInput = document.getElementById('img-url-input');
@@ -943,27 +1299,125 @@ function syncShapeUI(img) {
   document.querySelectorAll('#shape-row .shape-btn').forEach(b => b.classList.toggle('active', b.dataset.shape === cur));
 }
 
+// ===== Растяжка картинки в цвет фона =====
+// data-fade на .img-crop: {"sides":["bottom",…],"len":40,"color":"auto"|"#hex"}. Слои .img-fade внутри обёртки
+// пересоздаёт applyFade — они едут с переносом и масштабом картинки и запекаются в экспорт вместе с ней.
+// «auto» = цвет фона слайда: на чёрном картинка уходит в чёрное, на белом — в белое.
+const FADE_DIRS = { bottom: 'to bottom', top: 'to top', left: 'to left', right: 'to right' };
+function getFade(wrap) {
+  try { return Object.assign({ sides: [], len: 40, color: 'auto' }, JSON.parse(wrap.dataset.fade || '{}')); }
+  catch (e) { return { sides: [], len: 40, color: 'auto' }; }
+}
+function toRGB(color) {
+  const c = document.createElement('canvas').getContext('2d');
+  c.fillStyle = '#000'; c.fillStyle = color;
+  const v = c.fillStyle; // '#rrggbb' или 'rgba(r, g, b, a)'
+  if (v[0] === '#') return [parseInt(v.slice(1, 3), 16), parseInt(v.slice(3, 5), 16), parseInt(v.slice(5, 7), 16)];
+  return v.match(/[\d.]+/g).slice(0, 3).map(Number);
+}
+function slideBgColor(el) {
+  const story = el.closest('.story');
+  const bg = story ? getComputedStyle(story).backgroundColor : '';
+  return (!bg || /rgba\(0, 0, 0, 0\)|transparent/.test(bg)) ? '#ffffff' : bg;
+}
+// Кривая растяжки: доля «ухода» на 0/30/60/85/100 % её длины — мягко, без ступеньки в начале
+const FADE_CURVE = [[0, 0], [0.3, 0.18], [0.6, 0.55], [0.85, 0.88], [1, 1]];
+// «Как фон» (color auto, 16.10.2026, F9): фото само становится прозрачным к краю — сквозь него виден настоящий фон
+// слайда (цвет, картинка фона, блоки ниже). Раньше слой красился средним цветом слайда, и на картинке фона
+// оставалась полоса. Превью — CSS-маска (стороны пересекаются), экспорт — bakeFadeMasks запекает альфу в пиксели.
+function fadeMask(f) {
+  return f.sides.map(side => {
+    const st = 100 - f.len;
+    const stops = FADE_CURVE.map(([t, k]) => `rgba(0,0,0,${(1 - k).toFixed(2)}) ${(st + t * f.len).toFixed(1)}%`);
+    return `linear-gradient(${FADE_DIRS[side]}, rgba(0,0,0,1) 0%, ${stops.join(', ')})`;
+  }).join(', ');
+}
+function applyFade(wrap) {
+  wrap.querySelectorAll(':scope > .img-fade').forEach(n => n.remove());
+  ['maskImage', 'webkitMaskImage', 'maskComposite', 'webkitMaskComposite'].forEach(k => wrap.style[k] = '');
+  const f = getFade(wrap);
+  if (!f.sides.length) { delete wrap.dataset.fade; return; }
+  if (f.color === 'auto') {
+    const m = fadeMask(f);
+    wrap.style.webkitMaskImage = m; wrap.style.maskImage = m;
+    if (f.sides.length > 1) { wrap.style.webkitMaskComposite = 'source-in'; wrap.style.maskComposite = 'intersect'; }
+    return;
+  }
+  const [r, g, b] = toRGB(f.color);
+  const a = k => `rgba(${r},${g},${b},${k})`;
+  f.sides.forEach(side => {
+    const d = document.createElement('div');
+    d.className = 'img-fade';
+    const vertical = side === 'top' || side === 'bottom';
+    d.style.cssText = vertical
+      ? `left:0;right:0;${side}:0;height:${f.len}%;`
+      : `top:0;bottom:0;${side}:0;width:${f.len}%;`;
+    // мягкая кривая вместо линейной: без видимой «ступеньки» в начале растяжки
+    d.style.background = `linear-gradient(${FADE_DIRS[side]}, ${FADE_CURVE.map(([t, k]) => `${a(k)} ${t * 100}%`).join(', ')})`;
+    wrap.appendChild(d);
+  });
+}
+function refreshFades(root) { (root || document).querySelectorAll('.img-crop[data-fade]').forEach(applyFade); }
+function setFade(patch) {
+  const img = activeImgTarget;
+  if (!img) return;
+  const wrap = ensureCropWrap(img);
+  const f = Object.assign(getFade(wrap), patch);
+  wrap.dataset.fade = JSON.stringify(f);
+  applyFade(wrap);
+  syncFadeUI(img);
+}
+function toggleFadeSide(side) {
+  const img = activeImgTarget;
+  if (!img) return;
+  const f = getFade(ensureCropWrap(img));
+  const sides = f.sides.includes(side) ? f.sides.filter(s => s !== side) : f.sides.concat(side);
+  setFade({ sides });
+}
+function setFadeColor(color) {
+  const img = activeImgTarget;
+  if (!img) return;
+  const f = getFade(ensureCropWrap(img));
+  setFade({ color, sides: f.sides.length ? f.sides : ['bottom'] }); // цвет без стороны — сразу растяжка снизу
+}
+function clearFade() { setFade({ sides: [] }); }
+function syncFadeUI(img) {
+  const wrap = img && getCropWrap(img);
+  const f = wrap ? getFade(wrap) : { sides: [], len: 40, color: 'auto' };
+  document.querySelectorAll('#fade-sides .fade-side-btn').forEach(b => b.classList.toggle('active', f.sides.includes(b.dataset.side)));
+  document.querySelectorAll('#fade-colors .fade-color-btn').forEach(b => b.classList.toggle('active', b.dataset.color === f.color));
+  document.getElementById('fade-len').value = f.len;
+  document.getElementById('fade-len-value').textContent = f.len + '%';
+}
+document.getElementById('fade-len').addEventListener('input', (e) => {
+  document.getElementById('fade-len-value').textContent = e.target.value + '%';
+  const img = activeImgTarget;
+  if (img && getFade(ensureCropWrap(img)).sides.length) setFade({ len: +e.target.value });
+});
+document.getElementById('fade-pick').addEventListener('input', (e) => setFadeColor(e.target.value));
+refreshFades();
+
 function openImageEditor(img) {
   closeSizeEditor();
   activeImgTarget = img;
+  selectBlock(img.closest('.block'));
   syncScaleUI(img);
   syncShapeUI(img);
+  syncFadeUI(img);
   syncLayerUI(img.closest('.block'));
-  imgUrlInput.value = img.getAttribute('src') || '';
-  const rect = img.getBoundingClientRect();
-  let left = rect.right + 12, top = rect.top;
-  if (left + 320 > window.innerWidth) left = rect.left - 330;
-  if (left < 8) left = 8;
-  if (top + 260 > window.innerHeight) top = window.innerHeight - 270;
-  if (top < 50) top = 50;
-  imgEditorPanel.style.left = left + 'px';
-  imgEditorPanel.style.top = top + 'px';
+  const src = img.getAttribute('src') || '';
+  imgUrlInput.value = src.startsWith('data:') ? '' : src;
+  imgUrlInput.placeholder = src.startsWith('data:') ? 'Картинка встроена в файл — вставь адрес, чтобы заменить' : 'images/… или https://…';
+  syncRotUI(img);
   imgEditorPanel.classList.add('visible');
+  placeRotHandles();
 }
 function closeImageEditor() {
   imgEditorPanel.classList.remove('visible');
   exitCropMode();
+  if (activeImgTarget) selectBlock(null);
   activeImgTarget = null;
+  placeRotHandles();
 }
 imgScaleInput.addEventListener('input', () => {
   const val = +imgScaleInput.value;
@@ -1023,7 +1477,8 @@ function resetImageTransform() {
   s.scale = 1; s.tx = 0; s.ty = 0;
   applyImageTransform(activeImgTarget);
   const w = getWrapTransform(activeImgTarget);
-  w.tx = 0; w.ty = 0; w.scale = 1;
+  w.tx = 0; w.ty = 0; w.scale = 1; w.rot = 0;
+  syncRotUI(activeImgTarget);
   resetCrop(activeImgTarget); // внутри вызовет applyCrop → applyWrapTransform
   imgScaleInput.value = 100;
   imgScaleValue.textContent = '100%';
@@ -1165,7 +1620,7 @@ document.querySelectorAll('.story-image-block img').forEach(img => {
 });
 document.addEventListener('mousedown', (e) => {
   if (!imgEditorPanel.classList.contains('visible')) return;
-  if (imgEditorPanel.contains(e.target)) return;
+  if (inspector.contains(e.target) || e.target.closest('.rot-handles')) return;
   if (e.target.closest('.story-image-block img')) return;
   if (e.target.closest('.moodboard-overlay')) return; // клик по мудборду не сбрасывает выбор картинки
   closeImageEditor();
@@ -1196,16 +1651,28 @@ document.addEventListener('pointerdown', (e) => {
     }
     block = candidate;
   }
-  dragState = { block, startY: e.clientY, startTranslateY: getTranslateY(block) };
+  const t0 = getTranslate(block);
+  dragState = { block, startX: e.clientX, startY: e.clientY, tx0: t0.x, ty0: t0.y, moved: false, viaHandle: !!handle };
   block.classList.add('dragging');
   e.preventDefault();
 });
 document.addEventListener('pointermove', (e) => {
   if (!dragState) return;
   e.preventDefault();
-  setTranslateY(dragState.block, dragState.startTranslateY + (e.clientY - dragState.startY) / SCALE);
+  if (Math.abs(e.clientX - dragState.startX) + Math.abs(e.clientY - dragState.startY) > 3) dragState.moved = true;
+  setTranslate(dragState.block, dragState.tx0 + (e.clientX - dragState.startX) / SCALE, dragState.ty0 + (e.clientY - dragState.startY) / SCALE);
 });
-document.addEventListener('pointerup', () => { if (!dragState) return; dragState.block.classList.remove('dragging'); dragState = null; });
+document.addEventListener('pointerup', () => {
+  if (!dragState) return;
+  const { block, moved, viaHandle } = dragState;
+  block.classList.remove('dragging');
+  dragState = null;
+  if (moved || !viaHandle) return;
+  // клик по ручке ⠿ без переноса выбирает блок, не входя в набор текста (дальше ⌫ удаляет его)
+  const txt = block.querySelector('.story-text, .story-text-sm, .story-quote, .story-title, .story-kicker, .story-bullets');
+  const img = block.querySelector('.story-image-block img');
+  if (txt) { closeImageEditor(); openSizeEditor(txt); } else if (img) openImageEditor(img);
+});
 
 // ===== Горизонтальный ресайз текстовых блоков =====
 // Тянем левую/правую кромку payload'а — меняются inline margin-left/right на нём
@@ -1298,9 +1765,14 @@ function bakeImageGeometry(origStory, cloneStory) {
     if (!owrap || !cwrap) return;
     const oblock = owrap.closest('.story-image-block');
     const cblock = cwrap.closest('.story-image-block');
+    // повёрнутая картинка: рамки меряем без поворота (иначе это описанный прямоугольник), поворот вернём клону
+    const rot = getWrapTransform(oimg).rot || 0;
+    const liveTf = owrap.style.transform;
+    if (rot) owrap.style.transform = liveTf.replace(/\s*rotate\([^)]*\)/, '');
     const bRect = oblock.getBoundingClientRect();
     const wRect = owrap.getBoundingClientRect();
     const iRect = oimg.getBoundingClientRect();
+    if (rot) owrap.style.transform = liveTf;
     // Обёртка выпадает из потока — фиксируем высоту и ширину блока, чтобы соседи не съехали
     // (ширину — для строчных раскладок: блок с width:auto рядом с текстом иначе схлопнется в 0)
     cblock.style.height = oblock.offsetHeight + 'px';
@@ -1313,7 +1785,8 @@ function bakeImageGeometry(origStory, cloneStory) {
     cwrap.style.margin = '0';
     // max-width:100% из CSS обрезал бы запечённую ширину растянутой картинки до ширины блока (07.10.2026)
     cwrap.style.maxWidth = 'none';
-    cwrap.style.transform = 'none';
+    cwrap.style.transform = rot ? `rotate(${rot}deg)` : 'none';
+    cwrap.style.transformOrigin = 'center center';
     cimg.style.position = 'absolute';
     cimg.style.left = ((iRect.left - wRect.left) / SCALE) + 'px';
     cimg.style.top = ((iRect.top - wRect.top) / SCALE) + 'px';
@@ -1325,9 +1798,81 @@ function bakeImageGeometry(origStory, cloneStory) {
   });
 }
 
+// Экспорт растяжки «Как фон»: html2canvas не знает CSS-масок, поэтому картинка клона перерисовывается на canvas
+// в размер окна (геометрия уже запечена bakeImageGeometry), и альфа растяжки умножается в пиксели.
+function bakeFadeMasks(origStory, cloneStory) {
+  const origImgs = origStory.querySelectorAll('.story-image-block img');
+  const cloneImgs = cloneStory.querySelectorAll('.story-image-block img');
+  origImgs.forEach((oimg, i) => {
+    const owrap = oimg.closest('.img-crop'), cimg = cloneImgs[i], cwrap = cimg && cimg.closest('.img-crop');
+    if (!owrap || !cwrap) return;
+    const f = getFade(owrap);
+    if (!f.sides.length || f.color !== 'auto') return;
+    const W = Math.round(parseFloat(cwrap.style.width)), H = Math.round(parseFloat(cwrap.style.height));
+    if (!(W > 0 && H > 0) || !oimg.complete || !oimg.naturalWidth) return;
+    try {
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const x = cv.getContext('2d');
+      x.drawImage(oimg, parseFloat(cimg.style.left) || 0, parseFloat(cimg.style.top) || 0, parseFloat(cimg.style.width), parseFloat(cimg.style.height));
+      x.globalCompositeOperation = 'destination-in';
+      f.sides.forEach(side => {
+        const vert = side === 'top' || side === 'bottom', L = (vert ? H : W) * f.len / 100, full = vert ? H : W;
+        const g = side === 'bottom' ? x.createLinearGradient(0, 0, 0, H) : side === 'top' ? x.createLinearGradient(0, H, 0, 0)
+                : side === 'right' ? x.createLinearGradient(0, 0, W, 0) : x.createLinearGradient(W, 0, 0, 0);
+        g.addColorStop(0, 'rgba(0,0,0,1)');
+        FADE_CURVE.forEach(([t, k]) => g.addColorStop(Math.min(1, (full - L + t * L) / full), `rgba(0,0,0,${1 - k})`));
+        x.fillStyle = g; x.fillRect(0, 0, W, H);
+      });
+      cimg.src = cv.toDataURL('image/png');
+      Object.assign(cimg.style, { left: '0px', top: '0px', width: W + 'px', height: H + 'px' });
+      ['maskImage', 'webkitMaskImage', 'maskComposite', 'webkitMaskComposite'].forEach(k => cwrap.style[k] = '');
+    } catch (e) { console.warn('растяжка не запеклась (картинка с другого сайта?)', e); }
+  });
+}
+
+// Начертания шрифтов, которые реально стоят на слайде: «400 normal 'Onest'», «500 italic 'Cormorant Garamond'»…
+// fonts.ready в клоне html2canvas резолвится сразу, если шрифт там ещё не запрошен, и текст меряется
+// запасным шрифтом, а рисуется настоящим — буквы наезжают (15.10.2026, Cormorant Garamond). Поэтому
+// каждое начертание грузим в клоне явно, вместе с кириллицей.
+function storyFontFaces(el) {
+  const faces = new Set();
+  el.querySelectorAll('*').forEach(n => {
+    if (!n.childNodes.length || ![...n.childNodes].some(c => c.nodeType === 3 && c.textContent.trim())) return;
+    const cs = getComputedStyle(n);
+    faces.add(`${cs.fontStyle} ${cs.fontWeight} 40px ${cs.fontFamily}`);
+  });
+  return [...faces];
+}
+// В клоне (iframe html2canvas) таблица Google Fonts может ещё грузиться: тогда fonts.load не находит
+// начертание и сразу резолвится пустым. Ждём таблицы стилей, грузим начертания и проверяем fonts.check
+// с повторами, пока все не готовы (не дольше 5 с).
+function waitSheets(doc) {
+  return Promise.all([...doc.querySelectorAll('link[rel="stylesheet"]')].map(l => l.sheet ? null :
+    new Promise(r => { l.addEventListener('load', r, { once: true }); l.addEventListener('error', r, { once: true }); setTimeout(r, 4000); })));
+}
+async function loadFaces(doc, faces) {
+  if (!doc.fonts || !doc.fonts.load) return;
+  await waitSheets(doc);
+  const sample = 'АаЯяЁё Aa 0';
+  const t0 = Date.now();
+  while (Date.now() - t0 < 5000) {
+    await Promise.all(faces.map(f => doc.fonts.load(f, sample).catch(() => null)));
+    await doc.fonts.ready;
+    if (faces.every(f => { try { return doc.fonts.check(f, sample); } catch (e) { return true; } })) return;
+    await new Promise(r => setTimeout(r, 120));
+  }
+}
+
 async function captureStory(id, format) {
   const el = document.getElementById(id);
   el.querySelectorAll('[contenteditable]').forEach(e => e.blur());
+  const faces = storyFontFaces(el);
+  await loadFaces(document, faces);
+  // прогрев canvas: Chrome рисует ещё не использованный на холсте веб-шрифт запасным, и глифы
+  // встают шире отмеренных мест (15.10.2026); один fillText каждым начертанием и два кадра снимают это
+  const warm = document.createElement('canvas').getContext('2d');
+  faces.forEach(f => { warm.font = f; warm.fillText('АаЯяЁё Aa 0', 0, 40); });
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   const clone = el.cloneNode(true);
   clone.style.transform = 'none';
   clone.style.marginBottom = '0';
@@ -1339,14 +1884,20 @@ async function captureStory(id, format) {
   clone.querySelectorAll('.crop-handle').forEach(h => h.remove());
   clone.querySelectorAll('.img-crop.cropping').forEach(w => w.classList.remove('cropping'));
   clone.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
+  clone.querySelectorAll('.guides').forEach(g => g.remove());
+  clone.querySelectorAll('.block.selected').forEach(b => b.classList.remove('selected'));
   bakeImageGeometry(el, clone);
+  bakeFadeMasks(el, clone);
   document.body.appendChild(clone);
   clone.style.height = currentFormat.h + 'px';
+  // выделения: многострочные — кусками по строкам, рукописные — перерисовать под размер в клоне
+  splitHighlightsByLine(clone);
+  refreshHandDrawn(clone);
   await new Promise(r => setTimeout(r, 100));
   // onclone: дождаться загрузки веб-шрифтов в клоне — иначе html2canvas рисует фолбэком по метрикам
   // настоящего шрифта, и буквы разъезжаются (замечено на Unbounded 18.09.2026)
   const canvas = await html2canvas(clone, { scale: 1, width: currentFormat.w, height: currentFormat.h, useCORS: true, backgroundColor: null,
-    onclone: (doc) => (doc.fonts && doc.fonts.ready) ? doc.fonts.ready.then(() => new Promise(r => setTimeout(r, 150))) : null });
+    onclone: (doc) => loadFaces(doc, faces).then(() => new Promise(r => setTimeout(r, 150))) });
   document.body.removeChild(clone);
   const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
   return canvas.toDataURL(mime, format === 'jpeg' ? 0.95 : undefined);
@@ -1357,13 +1908,14 @@ function dl(dataURL, filename) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
 
-// Формат холста: Instagram Stories/Reels 1080×1920 или пост 1080×1350.
-// Глобально на всю колоду; CSS-правило body.fmt-post .story меняет высоту и margin превью.
-const FORMATS = { story: { w: 1080, h: 1920 }, post: { w: 1080, h: 1350 } };
+// Формат холста: Instagram Stories/Reels 1080×1920, пост 1080×1350 или горизонтальная обложка 1920×1080.
+// Глобально на всю колоду; CSS-правила body.fmt-post / body.fmt-wide .story меняют размер и margin превью.
+const FORMATS = { story: { w: 1080, h: 1920 }, post: { w: 1080, h: 1350 }, wide: { w: 1920, h: 1080 } };
 let currentFormat = FORMATS.story;
 function setFormat(fmt) {
   currentFormat = FORMATS[fmt];
   document.body.classList.toggle('fmt-post', fmt === 'post');
+  document.body.classList.toggle('fmt-wide', fmt === 'wide');
   document.querySelectorAll('.fmt-btn').forEach(b => b.classList.toggle('active', b.dataset.fmt === fmt));
 }
 
@@ -1386,6 +1938,28 @@ function adjustFontSize(delta) {
   activeSizeTarget.style.fontSize = Math.max(14, Math.round(cur + delta)) + 'px';
   updateFontPx();
 }
+// Межстрочный интервал: множитель от кегля (1.38 = 138 %), шаг 0.05; клик по значению — интервал стиля
+function currentLineHeight(el) {
+  const cs = getComputedStyle(el), fs = parseFloat(cs.fontSize) || 40;
+  return cs.lineHeight === 'normal' ? 1.2 : parseFloat(cs.lineHeight) / fs;
+}
+function adjustLineHeight(delta) {
+  if (!activeSizeTarget) return;
+  const v = Math.min(2.4, Math.max(0.7, Math.round((currentLineHeight(activeSizeTarget) + delta) * 100) / 100));
+  activeSizeTarget.style.lineHeight = String(v);
+  updateLineHeight();
+  refreshHandDrawn(activeSizeTarget);
+}
+function resetLineHeight() {
+  if (!activeSizeTarget) return;
+  activeSizeTarget.style.lineHeight = '';
+  updateLineHeight();
+  refreshHandDrawn(activeSizeTarget);
+}
+function updateLineHeight() {
+  const el = document.getElementById('lh-value');
+  el.textContent = activeSizeTarget ? currentLineHeight(activeSizeTarget).toFixed(2) : '–';
+}
 function updateFontPx() {
   const el = document.getElementById('font-px');
   el.textContent = activeSizeTarget
@@ -1395,6 +1969,7 @@ function updateFontPx() {
 
 function openSizeEditor(textEl) {
   activeSizeTarget = textEl;
+  selectBlock(textEl.closest('.block'));
   updateFontPx();
   syncLayerUI(textEl.closest('.block'));
   const cur = getTextSize(textEl);
@@ -1402,22 +1977,14 @@ function openSizeEditor(textEl) {
   const curAlign = textEl.style.textAlign || 'left';
   alignBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.align === curAlign));
   updateFontBtns();
-  const rect = textEl.getBoundingClientRect();
-  let left = rect.right + 12, top = rect.top;
-  if (left + 210 > window.innerWidth) left = rect.left - 220;
-  if (left < 8) left = 8;
-  sizePanel.style.left = left + 'px';
-  sizePanel.style.top = top + 'px';
+  updateLineHeight();
   sizePanel.classList.add('visible');
-  // Клэмп по фактической высоте панели (после появления секции шрифтов она высокая)
-  const ph = sizePanel.offsetHeight;
-  if (top + ph > window.innerHeight - 10) top = window.innerHeight - ph - 10;
-  if (top < 50) top = 50;
-  sizePanel.style.top = top + 'px';
 }
 
 function closeSizeEditor() {
   sizePanel.classList.remove('visible');
+  document.getElementById('font-row').classList.remove('open');
+  if (activeSizeTarget) selectBlock(null);
   activeSizeTarget = null;
 }
 
@@ -1437,38 +2004,61 @@ sizeBtns.forEach(btn => {
 
 // Переключатель шрифта блока: меняется ТОЛЬКО font-family;
 // размер (font-size), начертание (bold/italic) и всё остальное остаются как были.
+// Группы — разделы раскрывающегося списка; новые шрифты добавлять сюда и в ссылку Google Fonts в <head>
 const FONTS = [
-  { label: 'Inter', family: '' }, // базовый — пустая строка сбрасывает inline-стиль
-  { label: 'Unbounded', family: "'Unbounded', sans-serif" },
-  { label: 'Russo One', family: "'Russo One', sans-serif" },
-  { label: 'Playfair Display', family: "'Playfair Display', serif" },
-  { label: 'Lora', family: "'Lora', serif" },
-  { label: 'Golos Text', family: "'Golos Text', sans-serif" },
-  { label: 'Manrope', family: "'Manrope', sans-serif" },
-  { label: 'JetBrains Mono', family: "'JetBrains Mono', monospace" },
-  { label: 'Geologica', family: "'Geologica', sans-serif" },
-  { label: 'Onest', family: "'Onest', sans-serif" },
+  { group: 'Гротеск', label: 'Inter', family: '' }, // базовый — пустая строка сбрасывает inline-стиль
+  { group: 'Гротеск', label: 'Golos Text', family: "'Golos Text', sans-serif" },
+  { group: 'Гротеск', label: 'Manrope', family: "'Manrope', sans-serif" },
+  { group: 'Гротеск', label: 'Geologica', family: "'Geologica', sans-serif" },
+  { group: 'Гротеск', label: 'Onest', family: "'Onest', sans-serif" },
+  { group: 'Антиква', label: 'Playfair Display', family: "'Playfair Display', serif" },
+  { group: 'Антиква', label: 'Lora', family: "'Lora', serif" },
+  { group: 'Акцидентные', label: 'Unbounded', family: "'Unbounded', sans-serif" },
+  { group: 'Акцидентные', label: 'Russo One', family: "'Russo One', sans-serif" },
+  { group: 'Моно', label: 'JetBrains Mono', family: "'JetBrains Mono', monospace" },
 ];
 const fontRow = document.getElementById('font-row');
+const fontCurrent = document.getElementById('font-current');
 // Первое имя семейства без кавычек — для сравнения style.fontFamily с data-family
 function famKey(v) { return (v || '').split(',')[0].replace(/['"]/g, '').trim(); }
+let lastGroup = null;
 FONTS.forEach(f => {
+  if (f.group !== lastGroup) {
+    const h = document.createElement('div');
+    h.className = 'font-group';
+    h.textContent = f.group;
+    fontRow.appendChild(h);
+    lastGroup = f.group;
+  }
   const btn = document.createElement('div');
   btn.className = 'font-btn';
   btn.textContent = f.label;
-  btn.title = f.label; // сетка 2×4 узкая — длинные имена уходят в ellipsis
+  btn.title = f.group + ' · ' + f.label;
   btn.dataset.family = f.family;
   btn.style.fontFamily = f.family || "'Inter', sans-serif";
+  btn.addEventListener('mousedown', e => e.preventDefault()); // фокус и выделение остаются в тексте
   btn.addEventListener('click', () => {
     if (!activeSizeTarget) return;
     activeSizeTarget.style.fontFamily = f.family;
     updateFontBtns();
+    refreshHandDrawn(activeSizeTarget);
   });
   fontRow.appendChild(btn);
 });
+function toggleFontList() { fontRow.classList.toggle('open'); }
+fontCurrent.addEventListener('mousedown', e => e.preventDefault());
 function updateFontBtns() {
   const cur = famKey(activeSizeTarget ? activeSizeTarget.style.fontFamily : '');
-  fontRow.querySelectorAll('.font-btn').forEach(b => b.classList.toggle('active', famKey(b.dataset.family) === cur));
+  let label = null;
+  fontRow.querySelectorAll('.font-btn').forEach(b => {
+    const on = famKey(b.dataset.family) === cur;
+    b.classList.toggle('active', on);
+    if (on) label = b.textContent;
+  });
+  // шрифт задан стилем колоды, а не из списка — показываем его имя как есть
+  const shown = label || famKey(activeSizeTarget ? getComputedStyle(activeSizeTarget).fontFamily : '') || 'Inter';
+  fontCurrent.textContent = shown;
+  fontCurrent.style.fontFamily = activeSizeTarget ? getComputedStyle(activeSizeTarget).fontFamily : '';
 }
 
 const alignBtns = sizePanel.querySelectorAll('.align-btn');
@@ -1490,20 +2080,104 @@ document.querySelectorAll('.story-text, .story-text-sm, .story-quote, .story-tit
 
 document.addEventListener('mousedown', (e) => {
   if (!sizePanel.classList.contains('visible')) return;
-  if (sizePanel.contains(e.target)) return;
+  if (inspector.contains(e.target)) return;
   if (activeSizeTarget && activeSizeTarget.contains(e.target)) return;
   closeSizeEditor();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && sizePanel.classList.contains('visible')) closeSizeEditor();
+  if (e.key !== 'Escape' || !sizePanel.classList.contains('visible')) return;
+  if (activeSizeTarget && document.activeElement === activeSizeTarget) { activeSizeTarget.blur(); window.getSelection().removeAllRanges(); return; }
+  closeSizeEditor();
 });
 
+// Тёмный ли цвет: относительная яркость WCAG < 0,4 → слайд тёмный (белый текст)
+function isDarkColor(color) {
+  const [r, g, b] = toRGB(color).map(v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.4;
+}
+// Цвет фона слайда. Пишется только background-color — картинка фона (setSlideBgImage) остаётся под ним.
 function setSlideBg(color, isDark) {
   const story = slides[current].querySelector('.story');
   if (!story) return;
+  if (isDark === undefined) isDark = isDarkColor(color);
   story.classList.remove('story-white','story-gray','story-black');
-  story.style.background = color;
+  story.style.backgroundColor = color;
   if (isDark) story.classList.add('story-black');
+  refreshFades(story); // растяжки «как фон» перекрашиваются под новый фон
+  syncSlidePanel();
+}
+// Картинка фона слайда: background-image cover по центру, источник — в data-bg-image; null убирает
+function setSlideBgImage(src) {
+  const story = slides[current].querySelector('.story');
+  if (!story) return;
+  if (src) {
+    story.style.backgroundImage = `url("${src}")`;
+    story.style.backgroundSize = 'cover';
+    story.style.backgroundPosition = 'center';
+    story.style.backgroundRepeat = 'no-repeat';
+    story.dataset.bgImage = src;
+  } else {
+    ['backgroundImage', 'backgroundSize', 'backgroundPosition', 'backgroundRepeat'].forEach(k => story.style[k] = '');
+    delete story.dataset.bgImage;
+  }
+  syncSlidePanel();
+}
+// Средний цвет картинки (для цвета слайда под ней) и ужатый data-URL загруженного файла
+function imageAverage(img) {
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0, 8, 8);
+  const d = x.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, b = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+  const n = d.length / 4, h = v => Math.round(v / n).toString(16).padStart(2, '0');
+  return '#' + h(r) + h(g) + h(b);
+}
+function applyBgPreset(p) {
+  if (p.color) setSlideBg(p.color);
+  setSlideBgImage(p.src);
+}
+document.getElementById('bg-file-input').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, 1350 / Math.max(im.width, im.height));
+      const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      setSlideBg(imageAverage(im));
+      setSlideBgImage(c.toDataURL('image/jpeg', 0.88));
+      showToast('Фон слайда заменён');
+    };
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+});
+['tb-bg-pick', 'slide-bg-pick'].forEach(id => document.getElementById(id).addEventListener('input', (e) => setSlideBg(e.target.value)));
+document.querySelectorAll('.slide-bg-swatch').forEach(sw => sw.addEventListener('click', () => setSlideBg(sw.dataset.bg, sw.dataset.dark === '1')));
+// Галерея готовых фонов: backgrounds/backgrounds.js рядом с колодой (window.BACKGROUNDS); нет файла — галереи нет
+function renderBgGallery() {
+  const box = document.getElementById('bg-gallery');
+  box.innerHTML = '';
+  const list = window.BACKGROUNDS || [];
+  let last = null;
+  list.forEach(p => {
+    if (p.group !== last) { const h = document.createElement('div'); h.className = 'bg-group'; h.textContent = p.group; box.appendChild(h); last = p.group; }
+    const b = document.createElement('button');
+    b.className = 'bg-preset' + (/16:9/.test(p.group) ? ' wide' : '');
+    b.dataset.src = p.src; b.title = p.label;
+    b.style.backgroundImage = `url("${p.src}")`;
+    b.addEventListener('click', () => applyBgPreset(p));
+    box.appendChild(b);
+  });
+}
+function syncSlidePanel() {
+  const t = document.getElementById('slide-panel-title');
+  if (!t || !slides[current]) return;
+  t.textContent = 'Слайд ' + (current + 1);
+  const src = slides[current].querySelector('.story').dataset.bgImage || '';
+  document.querySelectorAll('#bg-gallery .bg-preset').forEach(b => b.classList.toggle('active', b.dataset.src === src));
 }
 
 document.querySelectorAll('.bg-swatch').forEach(sw => {
@@ -1521,6 +2195,8 @@ function applyPanelColor(mode, color, range) {
   if (range) { activeSizeTarget.focus(); sel.removeAllRanges(); sel.addRange(range); }
   const hasSelection = sel && sel.rangeCount && !sel.isCollapsed
     && activeSizeTarget.contains(sel.anchorNode) && activeSizeTarget.contains(sel.focusNode);
+  // Выделения и плашки — модель «одно выделение на слово» (applyHl). Цвет текста — как раньше, execCommand.
+  if (mode === 'highlight') { applyHl(hasSelection ? { style: hlStyle, color } : { color }); return; }
   if (hasSelection) {
     activeSizeTarget.focus();
     try { document.execCommand('styleWithCSS', false, true); } catch {}
@@ -1564,7 +2240,289 @@ document.querySelectorAll('.text-size-editor .color-row').forEach(row => {
   }
 });
 
-const BLOCK_CONTROLS_HTML = '<div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>';
+// ===== Стили выделения текста =====
+// span.hl.hl-<стиль> с цветом в --hl (и data-hl-color для рукописных). Рукописные стили — SVG-фон, нарисованный
+// под реальный размер выделения (refreshHandDrawn: после правки текста, смены кегля, шрифта и перед экспортом).
+let hlStyle = 'fill';
+let hlColor = '#fff176';
+const HAND_DRAWN = ['circle', 'scribble', 'pencil'];
+function svgURI(w, h, body) {
+  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}' preserveAspectRatio='none'>${body}</svg>`)}")`;
+}
+function handDrawnBg(style, color, w, h, fs) {
+  w = Math.max(10, Math.round(w)); h = Math.max(10, Math.round(h));
+  if (style === 'circle') {
+    const sw = Math.max(2, fs * 0.075), X = v => (sw + v * (w - 2 * sw)).toFixed(1), Y = v => (sw + v * (h - 2 * sw)).toFixed(1);
+    // неровный овал с захлёстом в конце — как обвели маркером
+    const d = `M${X(.16)},${Y(.1)} C${X(.5)},${Y(-.04)} ${X(1)},${Y(.06)} ${X(.99)},${Y(.5)} C${X(.98)},${Y(.94)} ${X(.55)},${Y(1)} ${X(.22)},${Y(.92)}`
+            + ` C${X(-.01)},${Y(.85)} ${X(0)},${Y(.32)} ${X(.2)},${Y(.15)} C${X(.34)},${Y(.04)} ${X(.58)},${Y(.02)} ${X(.74)},${Y(.08)}`;
+    return svgURI(w, h, `<path d='${d}' fill='none' stroke='${color}' stroke-width='${sw.toFixed(1)}' stroke-linecap='round' stroke-linejoin='round'/>`);
+  }
+  if (style === 'scribble') {
+    const bh = fs * 0.42, sw = bh * 0.55, y = bh * 0.55;
+    const d = `M${sw / 2},${y + bh * .08} C${w * .25},${y - bh * .22} ${w * .5},${y + bh * .2} ${w * .72},${y - bh * .05} S${w - sw},${y - bh * .12} ${w - sw / 2},${y - bh * .02}`;
+    return svgURI(w, Math.round(bh), `<path d='${d}' fill='none' stroke='${color}' stroke-opacity='0.85' stroke-width='${sw.toFixed(1)}' stroke-linecap='round'/>`);
+  }
+  // pencil: две тонкие неровные линии, как подчеркнули карандашом дважды
+  const bh = fs * 0.3, sw = Math.max(1.5, fs * 0.045);
+  const l1 = `M2,${bh * .45} C${w * .3},${bh * .3} ${w * .6},${bh * .6} ${w - 2},${bh * .35}`;
+  const l2 = `M${w * .04},${bh * .75} C${w * .35},${bh * .62} ${w * .7},${bh * .85} ${w * .96},${bh * .68}`;
+  return svgURI(w, Math.round(bh), `<path d='${l1}' fill='none' stroke='${color}' stroke-width='${sw.toFixed(1)}' stroke-linecap='round'/>`
+    + `<path d='${l2}' fill='none' stroke='${color}' stroke-opacity='0.75' stroke-width='${(sw * .8).toFixed(1)}' stroke-linecap='round'/>`);
+}
+function refreshHandDrawn(root) {
+  (root || document).querySelectorAll(HAND_DRAWN.map(s => '.hl-' + s).join(',')).forEach(s => {
+    const fs = parseFloat(getComputedStyle(s).fontSize) || 40;
+    const color = s.dataset.hlColor || getComputedStyle(s).getPropertyValue('--hl').trim() || hlColor;
+    s.style.backgroundImage = handDrawnBg(s.dataset.hl, color, s.offsetWidth, s.offsetHeight, fs);
+  });
+}
+function unwrapSpan(s) { const p = s.parentNode; while (s.firstChild) p.insertBefore(s.firstChild, s); p.removeChild(s); p.normalize(); }
+// ===== Модель выделений (16.10.2026): у каждого кусочка текста не больше одного выделения =====
+// Выделение = span.hl.hl-<стиль> c цветом в --hl / data-hl-color (заливка — тоже .hl-fill). Плашки заголовка
+// (.box и бывшие плашки .hl[data-box]) — выделения своей строки и меняются построчно.
+//   есть выделение текста → выделенные слова получают стиль и цвет; старое выделение на них заменяется,
+//                           его части за границами остаются (режется по границе);
+//   весь текст блока     → то же правило: все прежние выделения внутри распаковываются, остаётся одно;
+//   нет выделения        → свотч перекрашивает все выделения блока, кнопка стиля меняет им стиль (цвета остаются);
+//   крестик              → с выделением снимает выделения с выделенных слов, без — со всего блока.
+const PLAQUE = '.box, .hl[data-box]';
+function hlOf(node, block) {
+  const el = node && (node.nodeType === 1 ? node : node.parentElement);
+  const h = el && el.closest('.hl, .box');
+  return h && block.contains(h) && h !== block ? h : null;
+}
+function setHlSpan(sp, style, color) {
+  sp.className = 'hl hl-' + style;
+  sp.dataset.hl = style; sp.dataset.hlColor = color;
+  sp.style.background = ''; sp.style.backgroundImage = '';
+  sp.style.setProperty('--hl', color);
+}
+function newHlSpan(style, color) { const sp = document.createElement('span'); setHlSpan(sp, style, color); return sp; }
+// Вынуть маркер из всех .hl-предков: предок режется на две части, маркер встаёт между ними
+function liftOut(marker, block) {
+  let anc;
+  while ((anc = hlOf(marker.parentNode, block))) {
+    const r = document.createRange();
+    r.setStartBefore(marker); r.setEnd(anc, anc.childNodes.length);
+    const tail = r.extractContents();
+    tail.querySelectorAll('i[data-hl-mark]').forEach(m => m.remove());
+    if (tail.firstChild && tail.firstChild.dataset && tail.firstChild.dataset.hlMark !== undefined) tail.firstChild.remove();
+    const rest = anc.cloneNode(false); rest.appendChild(tail);
+    anc.after(marker);
+    if (rest.textContent) marker.after(rest);
+    if (!anc.textContent) anc.remove();
+  }
+}
+// Убрать то, что старая версия редактора наворачивала вокруг плашек: выделения .hl и заливку span[background]
+// снаружи плашки, пустые плашки. Текст и <br> остаются на месте.
+function cleanAroundBoxes(block, targets) {
+  targets.forEach(t => {
+    let n = t.parentElement;
+    while (n && n !== block) {
+      const up = n.parentElement;
+      if (n.classList.contains('hl')) unwrapSpan(n);
+      else if (n.tagName === 'SPAN' && n.style.backgroundColor && !n.classList.contains('box')) n.style.backgroundColor = '';
+      n = up;
+    }
+  });
+  block.querySelectorAll('.box').forEach(b => { if (!b.textContent.trim()) b.remove(); });
+  block.querySelectorAll('span:not([class]):not([style]), span[style=""]:not([class])').forEach(unwrapSpan);
+}
+function dropEmptyHl(block) { block.querySelectorAll('.hl').forEach(h => { if (!h.textContent) h.remove(); }); }
+function flattenHl(block) { let n; while ((n = block.querySelector('.hl .hl'))) unwrapSpan(n); }
+// Применить эффект к диапазону: style = null — снять выделения с диапазона
+function applyRangeEffect(block, range, style, color) {
+  const m1 = document.createElement('i'), m2 = document.createElement('i');
+  m1.dataset.hlMark = ''; m2.dataset.hlMark = '';
+  const end = range.cloneRange(); end.collapse(false); end.insertNode(m2);
+  const start = range.cloneRange(); start.collapse(true); start.insertNode(m1);
+  liftOut(m2, block); liftOut(m1, block);
+  const r = document.createRange(); r.setStartAfter(m1); r.setEndBefore(m2);
+  const frag = r.extractContents();
+  frag.querySelectorAll('.hl').forEach(unwrapSpan);
+  let out = null;
+  if (style) { out = newHlSpan(style, color); out.appendChild(frag); m2.before(out); }
+  else m2.before(frag);
+  m1.remove(); m2.remove();
+  dropEmptyHl(block); block.normalize();
+  const sel = window.getSelection(); sel.removeAllRanges();
+  if (out) { const rr = document.createRange(); rr.selectNodeContents(out); sel.addRange(rr); }
+  return out;
+}
+// Плашка заголовка: стиль/цвет меняются у самой строки; «Заливка» — прямоугольная .box, прозрачный — без фона
+function restylePlaque(el, style, color) {
+  const isBox = el.classList.contains('box');
+  const curStyle = isBox ? 'fill' : el.dataset.hl;
+  const curColor = isBox ? (el.style.backgroundColor || getComputedStyle(el).backgroundColor) : el.dataset.hlColor;
+  style = style || curStyle; color = color || curColor;
+  if (color === 'transparent' || style === 'fill') {
+    el.className = 'box';
+    delete el.dataset.hl; delete el.dataset.hlColor; delete el.dataset.box;
+    el.style.removeProperty('--hl'); el.style.backgroundImage = '';
+    el.style.background = color;
+  } else {
+    setHlSpan(el, style, color);
+    el.dataset.box = '1';
+  }
+}
+function restyleHighlight(sp, style, color) { // совместимость: смоук и старые вызовы
+  if (sp.matches(PLAQUE)) return restylePlaque(sp, style, color);
+  if (color === 'transparent') return unwrapSpan(sp);
+  setHlSpan(sp, style, color);
+}
+// Главная операция панели: o = { style?, color? }; color 'transparent' = крестик
+function applyHl(o) {
+  const block = activeSizeTarget;
+  if (!block) return;
+  if (o.style) hlStyle = o.style;
+  if (o.color && o.color !== 'transparent') hlColor = o.color;
+  syncHlPreview();
+  const sel = window.getSelection();
+  const has = sel && sel.rangeCount && !sel.isCollapsed && block.contains(sel.anchorNode) && block.contains(sel.focusNode);
+  const range = has ? sel.getRangeAt(0) : null;
+  const off = o.color === 'transparent';
+  // плашки заголовка, которых касается выделение (без выделения — все)
+  const plaques = [...block.querySelectorAll(PLAQUE)].filter(n => !range || range.intersectsNode(n));
+  if (plaques.length) {
+    cleanAroundBoxes(block, plaques);
+    plaques.filter(n => n.isConnected).forEach(n => restylePlaque(n, off ? 'fill' : o.style, off ? 'transparent' : o.color));
+  }
+  if (range && !plaques.length) {
+    applyRangeEffect(block, range, off ? null : hlStyle, hlColor);
+  } else if (!range) {
+    const all = [...block.querySelectorAll('.hl')].filter(h => !h.matches(PLAQUE));
+    if (off) all.forEach(unwrapSpan);
+    else if (all.length) all.forEach(h => setHlSpan(h, o.style || h.dataset.hl, o.color || h.dataset.hlColor));
+    else if (o.color && hlStyle === 'fill' && !plaques.length) block.style.background = o.color; // прежнее поведение: цвет плашки всего блока
+    if (off) block.style.background = '';
+  }
+  flattenHl(block);
+  refreshHandDrawn(block);
+  syncHlActive();
+}
+// Для тестов и скриптов: стиль + цвет к текущему выделению активного блока
+function applyHighlight(style, color) { applyHl({ style, color }); }
+function wrapHighlight(range, style, color) { // совместимость
+  const block = activeSizeTarget || hlOf(range.commonAncestorContainer, document.body)?.closest('[contenteditable]');
+  return applyRangeEffect(block || range.commonAncestorContainer.parentElement.closest('[contenteditable]'), range, style, color);
+}
+function unwrapHighlights(block, range) {
+  if (range && !range.collapsed) applyRangeEffect(block, range, null);
+  else block.querySelectorAll('.hl').forEach(unwrapSpan);
+}
+// Кнопка стиля под курсором: выделение, в котором стоит курсор (или целиком выделенный текст)
+function syncHlActive() {
+  const block = activeSizeTarget;
+  let st = hlStyle;
+  const sel = window.getSelection();
+  if (block && sel.rangeCount && block.contains(sel.anchorNode)) {
+    const h = hlOf(sel.getRangeAt(0).commonAncestorContainer, block) || (sel.isCollapsed ? hlOf(sel.anchorNode, block) : null);
+    if (h) st = h.classList.contains('box') ? 'fill' : h.dataset.hl;
+  }
+  document.querySelectorAll('#hl-style-row .hl-style-btn').forEach(b => b.classList.toggle('active', b.dataset.hl === st));
+}
+document.addEventListener('selectionchange', () => { if (activeSizeTarget) syncHlActive(); });
+// Наследие прежней «Заливки» (execCommand hiliteColor): inline background-color внутри текста → .hl.hl-fill.
+// Внешняя заливка накрывала внутренние выделения — она и остаётся (так это и выглядело на слайде).
+function convertLegacyFills(root) {
+  (root || document).querySelectorAll('[contenteditable]').forEach(block => {
+    [...block.querySelectorAll('[style*="background"]')].forEach(el => {
+      if (el.matches('.box, .hl, .hl-probe') || el === block) return;
+      const bg = el.style.backgroundColor;
+      if (!bg || /transparent|rgba\(0, 0, 0, 0\)/.test(bg)) return;
+      el.querySelectorAll('.hl').forEach(unwrapSpan);
+      el.style.backgroundColor = '';
+      if (el.tagName === 'SPAN' && !el.className) setHlSpan(el, 'fill', bg);
+      else { const sp = newHlSpan('fill', bg); while (el.firstChild) sp.appendChild(el.firstChild); el.appendChild(sp); }
+      if (el.getAttribute('style') === '') el.removeAttribute('style');
+    });
+    flattenHl(block);
+  });
+}
+// Превью стилей в панели — текущим цветом выделения
+function syncHlPreview() {
+  document.getElementById('hl-style-row').style.setProperty('--hl-ui', hlColor);
+  document.querySelectorAll('#hl-style-row .hl-pv[data-hl]').forEach(pv => pv.dataset.hlColor = hlColor);
+  refreshHandDrawn(document.getElementById('hl-style-row'));
+}
+function unwrapHighlights(block, range) {
+  block.querySelectorAll('.hl').forEach(s => { if (!range || range.intersectsNode(s)) unwrapSpan(s); });
+}
+document.querySelectorAll('#hl-style-row .hl-style-btn').forEach(btn => {
+  btn.addEventListener('mousedown', e => e.preventDefault()); // выделение в тексте не теряется
+  btn.addEventListener('click', () => {
+    if (!activeSizeTarget) { hlStyle = btn.dataset.hl; syncHlActive(); return; }
+    const sel = window.getSelection();
+    const has = sel.rangeCount && !sel.isCollapsed && activeSizeTarget.contains(sel.anchorNode);
+    applyHl(has ? { style: btn.dataset.hl, color: hlColor } : { style: btn.dataset.hl });
+  });
+});
+// Рукописные выделения подстраиваются под текст после правки (кегль, шрифт, набор)
+let hdTimer = null;
+document.addEventListener('input', (e) => {
+  const b = e.target.closest && e.target.closest('[contenteditable]');
+  if (!b || !b.querySelector('.hl')) return;
+  clearTimeout(hdTimer); hdTimer = setTimeout(() => refreshHandDrawn(b), 150);
+});
+document.fonts && document.fonts.ready.then(() => refreshHandDrawn());
+
+// Экспорт: html2canvas рисует фон многострочного inline-элемента одним прямоугольником поверх соседних слов.
+// В клоне слайда каждое многострочное выделение режется на куски по строкам (по offsetTop слов).
+function splitHighlightsByLine(root) {
+  root.querySelectorAll('.hl').forEach(s => {
+    if (s.getClientRects().length < 2) return; // однострочное — как есть
+    // 1. каждое слово и каждый пробел — в зонд-span, вложенная разметка (b, i) остаётся на месте
+    const walker = document.createTreeWalker(s, NodeFilter.SHOW_TEXT);
+    const texts = []; while (walker.nextNode()) texts.push(walker.currentNode);
+    const probes = [];
+    texts.forEach(tn => {
+      const frag = document.createDocumentFragment();
+      tn.textContent.split(/(\s+)/).filter(Boolean).forEach(t => {
+        const p = document.createElement('span'); p.className = 'hl-probe'; p.textContent = t;
+        frag.appendChild(p); probes.push(p);
+      });
+      tn.replaceWith(frag);
+    });
+    // 2. слова по строкам (offsetTop), пробелы на стыке строк остаются между кусками
+    const lines = [];
+    probes.forEach(p => {
+      if (!p.textContent.trim()) return;
+      const top = p.offsetTop;
+      const last = lines[lines.length - 1];
+      if (!last || Math.abs(last.top - top) > 2) lines.push({ top, first: p, last: p }); else last.last = p;
+    });
+    // 3. каждая строка вынимается Range'ом в свой кусок-копию выделения; промежутки — обычным текстом
+    const parent = s.parentNode;
+    lines.forEach(ln => {
+      const gap = document.createRange(); gap.setStart(s, 0); gap.setEndBefore(ln.first);
+      parent.insertBefore(gap.extractContents(), s);
+      const r = document.createRange(); r.setStartBefore(ln.first); r.setEndAfter(ln.last);
+      const piece = s.cloneNode(false);
+      piece.style.whiteSpace = 'nowrap';
+      piece.appendChild(r.extractContents());
+      parent.insertBefore(piece, s);
+    });
+    const tail = document.createRange(); tail.selectNodeContents(s);
+    parent.insertBefore(tail.extractContents(), s);
+    s.remove();
+    // 4. зонды разворачиваются обратно в текст
+    root.querySelectorAll('.hl-probe').forEach(p => p.replaceWith(document.createTextNode(p.textContent)));
+    parent.normalize();
+  });
+}
+
+// ===== Направляющие =====
+function toggleGuides() {
+  document.querySelectorAll('.story').forEach(st => {
+    if (!st.querySelector(':scope > .guides'))
+      st.insertAdjacentHTML('beforeend', '<div class="guides"><i class="g-l"></i><i class="g-r"></i><i class="g-t"></i><i class="g-b"></i><i class="g-c"></i></div>');
+  });
+  const on = document.body.classList.toggle('guides-on');
+  document.getElementById('guides-btn').classList.toggle('on', on);
+}
+
+const BLOCK_CONTROLS_HTML ='<div class="block-controls"><div class="move-btn" onclick="nudge(this,-1)">&#9650;</div><div class="drag-handle">&#10303;</div><div class="move-btn" onclick="nudge(this,1)">&#9660;</div></div>';
 
 function addTextBlock() {
   const activeSlide = slides[current].querySelector('.story');
@@ -1575,9 +2533,21 @@ function addTextBlock() {
   block.innerHTML = BLOCK_CONTROLS_HTML + '<div class="story-text" contenteditable="true">текст…</div>';
   if (footer) { activeSlide.insertBefore(block, footer); }
   else { activeSlide.appendChild(block); }
+  placeNewBlock(block, 0.4);
   const textEl = block.querySelector('.story-text');
   wireTextPanel(textEl);
   textEl.focus();
+  // заглушка выделена: набор сразу её заменяет
+  const r = document.createRange(); r.selectNodeContents(textEl);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
+// Абсолютная колода (4:5 из deck4x5): новый блок без координат встал бы в угол 0,0 — ставим в поле слайда
+function placeNewBlock(block, topFrac, topPx) {
+  if (getComputedStyle(block).position !== 'absolute') return;
+  const W = currentFormat.w, H = currentFormat.h;
+  block.style.left = '64px';
+  block.style.width = (W - 128) + 'px';
+  block.style.top = (topPx != null ? topPx : Math.round(H * topFrac)) + 'px';
 }
 
 // Плейсхолдер новой картинки — inline SVG как data URL, а не файл:
@@ -1606,6 +2576,7 @@ function addImageBlock() {
   block.querySelector('.story-image-block').appendChild(img);
   if (footer) { activeSlide.insertBefore(block, footer); }
   else { activeSlide.appendChild(block); }
+  placeNewBlock(block, 0, 200);
   ensureCropWrap(img);
   attachImageDropHandlers(img);
   openImageEditor(img);
@@ -1637,9 +2608,15 @@ function buildSaveHTML() {
   serializeImageState(); // WeakMap-состояние картинок → data-атрибуты
 
   const clone = document.documentElement.cloneNode(true);
-  clone.querySelectorAll('.crop-handle').forEach(h => h.remove());
-  clone.querySelectorAll('.cropping, .dragging, .drop-target, .h-resizing').forEach(el =>
-    el.classList.remove('cropping', 'dragging', 'drop-target', 'h-resizing'));
+  clone.querySelectorAll('.crop-handle, .guides').forEach(h => h.remove());
+  clone.querySelector('body').classList.remove('guides-on');
+  clone.style.removeProperty('--tb');
+  clone.querySelectorAll('.rot-handles').forEach(h => h.classList.remove('on'));
+  clone.querySelectorAll('#crop-btn.on, #guides-btn.on, .tb-menu.open').forEach(el => el.classList.remove('on', 'open'));
+  const fontRowOpen = clone.querySelector('#font-row');
+  if (fontRowOpen) fontRowOpen.classList.remove('open');
+  clone.querySelectorAll('.cropping, .dragging, .drop-target, .h-resizing, .selected').forEach(el =>
+    el.classList.remove('cropping', 'dragging', 'drop-target', 'h-resizing', 'selected'));
   clone.querySelectorAll('.image-editor, .text-size-editor, .moodboard-overlay, .sig-overlay, .toast').forEach(el =>
     el.classList.remove('visible'));
   // Эти два контейнера заполняются скриптом при каждой загрузке — в файле они
@@ -1705,8 +2682,8 @@ function duplicateSlide() {
   const clone = srcWrap.cloneNode(true);
   clone.classList.remove('active');
   clone.querySelectorAll('.crop-handle').forEach(h => h.remove());
-  clone.querySelectorAll('.cropping, .dragging, .drop-target, .h-resizing').forEach(el =>
-    el.classList.remove('cropping', 'dragging', 'drop-target', 'h-resizing'));
+  clone.querySelectorAll('.cropping, .dragging, .drop-target, .h-resizing, .selected').forEach(el =>
+    el.classList.remove('cropping', 'dragging', 'drop-target', 'h-resizing', 'selected'));
 
   // Уникальный id холста: max существующего N + 1 (id не перенумеровываются при
   // удалении, поэтому max, а не count)
@@ -1726,6 +2703,225 @@ function duplicateSlide() {
   goTo(current + 1);
   showToast('Слайд продублирован');
 }
+
+// ===== Поворот картинки =====
+// Угол — rot (градусы) в трансформе обёртки .img-crop рядом с tx/ty/scale: переживает дубль, сохранение
+// (data-wrap-transform) и экспорт (bakeImageGeometry меряет без поворота и поворачивает клон).
+// Крутить — ползунком в панели или за кружки у углов картинки; с Shift — шагом 15°.
+const imgRotInput = document.getElementById('img-rot');
+const imgRotValue = document.getElementById('img-rot-value');
+const rotHandles = document.getElementById('rot-handles');
+function normRot(a) { a = ((a + 180) % 360 + 360) % 360 - 180; return Math.round(a * 10) / 10; }
+function syncRotUI(img) {
+  const r = img ? (getWrapTransform(img).rot || 0) : 0;
+  imgRotInput.value = Math.round(r);
+  imgRotValue.textContent = Math.round(r) + '°';
+}
+function setImageRotation(deg) {
+  const img = activeImgTarget;
+  if (!img) return;
+  const w = getWrapTransform(img);
+  w.rot = normRot(deg);
+  if (!w.rot) delete w.rot;
+  applyWrapTransform(img);
+  syncRotUI(img);
+}
+imgRotInput.addEventListener('input', () => setImageRotation(+imgRotInput.value));
+// Кружки — в углах картинки на экране: центр и размер обёртки без поворота, углы поворачиваем сами
+function placeRotHandles() {
+  const img = activeImgTarget;
+  const wrap = img && getCropWrap(img);
+  if (!wrap || cropTarget || !img.closest('.story-wrap.active')) { rotHandles.classList.remove('on'); return; }
+  const rect = wrap.getBoundingClientRect();
+  const w = getWrapTransform(img), k = SCALE * (w.scale || 1);
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  const hw = wrap.offsetWidth * k / 2 + 6, hh = wrap.offsetHeight * k / 2 + 6;
+  const a = (w.rot || 0) * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
+  [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], i) => {
+    const h = rotHandles.children[i];
+    h.style.left = (cx + sx * hw * cos - sy * hh * sin) + 'px';
+    h.style.top = (cy + sx * hw * sin + sy * hh * cos) + 'px';
+  });
+  rotHandles.classList.add('on');
+}
+let rotDrag = null;
+rotHandles.addEventListener('pointerdown', (e) => {
+  if (!e.target.matches('i') || !activeImgTarget) return;
+  const rect = getCropWrap(activeImgTarget).getBoundingClientRect();
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  rotDrag = { cx, cy, a0: Math.atan2(e.clientY - cy, e.clientX - cx), r0: getWrapTransform(activeImgTarget).rot || 0 };
+  e.target.setPointerCapture(e.pointerId);
+  e.preventDefault(); e.stopPropagation();
+});
+rotHandles.addEventListener('pointermove', (e) => {
+  if (!rotDrag) return;
+  let r = rotDrag.r0 + (Math.atan2(e.clientY - rotDrag.cy, e.clientX - rotDrag.cx) - rotDrag.a0) * 180 / Math.PI;
+  if (e.shiftKey) r = Math.round(r / 15) * 15;
+  setImageRotation(r);
+});
+['pointerup', 'pointercancel'].forEach(t => rotHandles.addEventListener(t, () => { rotDrag = null; }));
+window.addEventListener('resize', () => { placeRotHandles(); measureToolbar(); });
+inspector.addEventListener('input', () => placeRotHandles()); // масштаб ползунком двигает углы
+
+// Меню «Экспорт» в тулбаре: открывается кликом, закрывается кликом мимо или после выбора
+function toggleExportMenu(e) { e.stopPropagation(); document.getElementById('export-menu').classList.toggle('open'); }
+document.addEventListener('click', () => document.getElementById('export-menu').classList.remove('open'));
+
+// ===== Высота тулбара → переменная --tb (тулбар может перенестись на вторую строку на узком окне) =====
+function measureToolbar() {
+  document.documentElement.style.setProperty('--tb', document.querySelector('.toolbar').offsetHeight + 'px');
+}
+// клики по панели не забирают выделение текста
+inspector.addEventListener('mousedown', (e) => {
+  if (e.target.closest('input, label, .font-row')) return;
+  if (activeSizeTarget) e.preventDefault();
+});
+measureToolbar();
+syncHlPreview();
+renderBgGallery(); syncSlidePanel();
+// Колоды, сохранённые до 16.10.2026: вокруг плашек заголовка могли остаться наслоения выделений — вычищаем при загрузке
+document.querySelectorAll('[contenteditable]').forEach(b => { const bx = [...b.querySelectorAll('.box')]; if (bx.length) cleanAroundBoxes(b, bx); });
+convertLegacyFills(document.querySelector('.viewport'));
+rotReady = true;
+
+// ===== Выбор блока и удаление клавишей =====
+// Выбран тот блок, чья панель открыта (клик по картинке, фокус в тексте, клик по ручке ⠿). ⌫ / Delete удаляют
+// выбранный блок, если фокус не в тексте и не в поле ввода — в наборе текста ⌫ стирает символы как обычно.
+let selectedBlock = null;
+function selectBlock(block) {
+  document.querySelectorAll('.block.selected').forEach(b => b !== block && b.classList.remove('selected'));
+  selectedBlock = block || null;
+  if (block) block.classList.add('selected');
+}
+function isTypingTarget(el) {
+  return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+  if (!selectedBlock || isTypingTarget(document.activeElement)) return;
+  if (mbOverlay.classList.contains('visible')) return;
+  e.preventDefault();
+  deleteActiveBlock();
+});
+
+// ===== Отмена и повтор (⌘Z / ⇧⌘Z / Ctrl+Y) =====
+// Снимок = разметка всех слайдов (с состоянием картинок в data-атрибутах) + номер слайда. Шаг пишется по затишью:
+// MutationObserver на .viewport, через 450 мс после последней правки; пока идёт перетаскивание — ждём pointerup.
+// Одинаковые снимки (выбор блока, листание) шагом не считаются: служебные классы из снимка вычищены.
+const HISTORY_MAX = 60;
+const viewportEl = document.querySelector('.viewport');
+let undoStack = [], redoStack = [], histTimer = null, restoring = false, lastSnap = null;
+const TRANSIENT = ['selected', 'dragging', 'cropping', 'drop-target', 'h-resizing'];
+function snapshotDeck() {
+  serializeImageState();
+  const tmp = viewportEl.cloneNode(true);
+  tmp.querySelectorAll('.crop-handle, .guides').forEach(n => n.remove());
+  tmp.querySelectorAll(TRANSIENT.map(c => '.' + c).join(',')).forEach(n => n.classList.remove(...TRANSIENT));
+  tmp.querySelectorAll('.story-wrap.active').forEach(w => w.classList.remove('active'));
+  tmp.querySelectorAll('[class=""]').forEach(n => n.removeAttribute('class'));
+  // стиль в каноническом виде: браузер переписывает «a:b;» как «a: b;» при перерисовке — это не правка
+  tmp.querySelectorAll('[style]').forEach(n => { const c = n.style.cssText; if (c) n.setAttribute('style', c); else n.removeAttribute('style'); });
+  return { html: tmp.innerHTML, current };
+}
+function busyGesture() { return !!(dragState || imgDragState || cropDragState || rotDrag || hResizeState); }
+function commitHistory() {
+  clearTimeout(histTimer); histTimer = null;
+  if (restoring) return;
+  const snap = snapshotDeck();
+  if (lastSnap && snap.html === lastSnap.html) return; // листание и выбор блока — не шаг
+  if (lastSnap) { undoStack.push(lastSnap); if (undoStack.length > HISTORY_MAX) undoStack.shift(); }
+  lastSnap = snap; redoStack = [];
+}
+function scheduleHistory() {
+  if (restoring) return;
+  clearTimeout(histTimer);
+  histTimer = setTimeout(function tick() { if (busyGesture()) { histTimer = setTimeout(tick, 200); return; } commitHistory(); }, 450);
+}
+const histObserver = new MutationObserver(() => scheduleHistory());
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#inspector, .toolbar, .block-controls')) return;
+  setTimeout(() => { if (!busyGesture() && histTimer) commitHistory(); }, 0);
+});
+function restoreDeck(snap, show) {
+  restoring = true;
+  closeImageEditor(); closeSizeEditor(); selectBlock(null);
+  viewportEl.innerHTML = snap.html;
+  refreshSlides();
+  viewportEl.querySelectorAll('.story-image-block img').forEach(img => { ensureCropWrap(img); attachImageDropHandlers(img); });
+  rehydrateImageState(viewportEl);
+  viewportEl.querySelectorAll('.story-text, .story-text-sm, .story-quote, .story-title, .story-kicker, .story-bullets').forEach(wireTextPanel);
+  refreshFades(); refreshHandDrawn();
+  if (document.body.classList.contains('guides-on')) { document.body.classList.remove('guides-on'); toggleGuides(); }
+  current = Math.min(Math.max(0, show), totalSlides - 1);
+  slides.forEach((w, i) => w.classList.toggle('active', i === current));
+  updateCounter(); syncSlidePanel(); placeRotHandles();
+  histObserver.takeRecords();
+  setTimeout(() => { histObserver.takeRecords(); restoring = false; }, 0);
+}
+function undo() {
+  if (histTimer) commitHistory();
+  if (!undoStack.length) { showToast('Нечего отменять'); return; }
+  const where = lastSnap.current;
+  redoStack.push(lastSnap);
+  lastSnap = undoStack.pop();
+  restoreDeck(lastSnap, where);
+  showToast('Отменено');
+}
+function redo() {
+  if (histTimer) commitHistory();
+  if (!redoStack.length) { showToast('Нечего повторять'); return; }
+  undoStack.push(lastSnap);
+  lastSnap = redoStack.pop();
+  restoreDeck(lastSnap, lastSnap.current);
+  showToast('Повторено');
+}
+document.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  const el = document.activeElement;
+  if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && el.type !== 'range' && el.type !== 'color') return; // в поле адреса — своя отмена
+  if (e.code === 'KeyZ') { e.preventDefault(); e.stopPropagation(); (e.shiftKey ? redo : undo)(); }
+  else if (e.code === 'KeyY' && e.ctrlKey) { e.preventDefault(); e.stopPropagation(); redo(); }
+}, true);
+// стили слайдов — в каноническом виде сразу: тогда отмена возвращает разметку байт в байт
+viewportEl.querySelectorAll('[style]').forEach(n => { const c = n.style.cssText; if (c) n.setAttribute('style', c); else n.removeAttribute('style'); });
+lastSnap = snapshotDeck();
+// После загрузки шрифтов рукописные выделения и растяжки перерисовываются сами — это не правка автора:
+// пока он ничего не трогал, история начинается заново с готового вида
+let userActed = false;
+['pointerdown', 'keydown'].forEach(t => document.addEventListener(t, () => { userActed = true; }, { capture: true, once: true }));
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(() => {
+  if (userActed) return;
+  clearTimeout(histTimer); histTimer = null; undoStack = []; redoStack = []; lastSnap = snapshotDeck();
+}, 700));
+histObserver.observe(viewportEl, { subtree: true, childList: true, characterData: true, attributes: true,
+  attributeFilter: ['style', 'class', 'src', 'data-fade', 'data-shape', 'data-hl', 'data-hl-color', 'data-bg-image'] });
+
+// ── Подпись в футере ──────────────────────────────────────────────
+// Хранится в localStorage. При первом открытии редактор спрашивает адрес блога или имя; «Без подписи» сохраняет
+// пустую строку — футеры чистые и больше не спрашиваем.
+const SIG_KEY = 'stories_footer_signature';
+function applySignature(v) { document.querySelectorAll('.footer-sig').forEach(el => { el.textContent = v || ''; }); }
+function saveSignature(v) {
+  v = (v || '').trim();
+  try { localStorage.setItem(SIG_KEY, v); } catch (e) {}
+  applySignature(v);
+  document.getElementById('sig-overlay').classList.remove('visible');
+}
+function openSignature() {
+  let cur = ''; try { cur = localStorage.getItem(SIG_KEY) || ''; } catch (e) {}
+  const input = document.getElementById('sig-input');
+  input.value = cur;
+  document.getElementById('sig-overlay').classList.add('visible');
+  input.focus(); input.select();
+}
+document.getElementById('sig-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveSignature(e.target.value); }
+  if (e.key === 'Escape') document.getElementById('sig-overlay').classList.remove('visible');
+});
+(function initSignature() {
+  let stored = null; try { stored = localStorage.getItem(SIG_KEY); } catch (e) {}
+  if (stored === null) openSignature(); else applySignature(stored);
+})();
 
 async function downloadOne(index, format) {
   try {
@@ -1750,37 +2946,6 @@ async function downloadAll(format) {
     goTo(prev);
   } catch(e) { console.error(e); alert('Запусти локальный сервер:\npython3 server.py 8089'); }
 }
-// ── Подпись в футере ──────────────────────────────────────────────
-// Ключ хранится в localStorage. При первом открытии редактор спрашивает
-// адрес блога / имя; если пользователь выбрал «Без подписи» — сохраняется
-// пустая строка и футеры остаются чистыми. Ключ существует → больше не спрашиваем.
-const SIG_KEY = 'stories_footer_signature';
-function applySignature(v) {
-  document.querySelectorAll('.footer-sig').forEach(el => { el.textContent = v || ''; });
-}
-function saveSignature(v) {
-  v = (v || '').trim();
-  localStorage.setItem(SIG_KEY, v);
-  applySignature(v);
-  document.getElementById('sig-overlay').classList.remove('visible');
-}
-function openSignature() {
-  const cur = localStorage.getItem(SIG_KEY) || '';
-  const input = document.getElementById('sig-input');
-  input.value = cur;
-  document.getElementById('sig-overlay').classList.add('visible');
-  input.focus();
-  input.select();
-}
-document.getElementById('sig-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); saveSignature(e.target.value); }
-  if (e.key === 'Escape') { document.getElementById('sig-overlay').classList.remove('visible'); }
-});
-(function initSignature() {
-  const stored = localStorage.getItem(SIG_KEY);
-  if (stored === null) { openSignature(); }   // ни разу не спрашивали — спросить
-  else { applySignature(stored); }             // уже есть значение (в т.ч. пустое) — применить
-})();
 </script>
 </body>
 </html>
